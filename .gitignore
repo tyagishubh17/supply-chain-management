@@ -1,7 +1,24 @@
-backend\venv/ 
-backend\__pycache__/ 
-backend\app\__pycache__/ 
-backend\app\routers\__pycache__/ 
-frontend\node_modules/ 
-frontend\dist/ 
+# --- secrets -----------------------------------------------
+# Never commit real credentials. backend/.env.example is the
+# committed template; backend/.env holds the real values.
+.env
+.env.local
+*.env
+!.env.example
+!backend/.env.example
+
+# --- python ------------------------------------------------
+backend/venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# --- node / vite -------------------------------------------
+frontend/node_modules/
+frontend/dist/
+node_modules/
+dist/
+
+# --- misc --------------------------------------------------
 *.log
+.DS_Store
