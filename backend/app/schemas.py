@@ -1,89 +1,127 @@
-from datetime import date
-from typing import Optional
+"""Request and response models.
 
-from pydantic import BaseModel, EmailStr
+Pydantic validates the shape and the obvious ranges here, which gives the
+user a fast, clear error. It is deliberately not the only line of defence:
+every rule below is also enforced by a CHECK constraint or a PL/pgSQL
+function, because a request that bypasses this API must still be rejected.
+"""
+
+from datetime import datetime
+from decimal import Decimal
+from typing import Literal, Optional
+
+from pydantic import BaseModel, EmailStr, Field
 
 
+# ---------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------
 class VendorRegister(BaseModel):
-    name: str
+    company_name: str = Field(min_length=2, max_length=150)
     email: EmailStr
-    password: str
-    company_name: str
-    address: Optional[str] = None
+    password: str = Field(min_length=6, max_length=72)  # bcrypt caps at 72 bytes
 
 
-class EnterpriseRegister(BaseModel):
-    name: str
+class CustomerRegister(BaseModel):
+    full_name: str = Field(min_length=2, max_length=150)
     email: EmailStr
-    password: str
-    company_name: str
-    address: Optional[str] = None
+    password: str = Field(min_length=6, max_length=72)
 
 
 class Login(BaseModel):
     email: EmailStr
     password: str
+    role: Literal["vendor", "customer"]
 
 
-class StaffRegister(BaseModel):
-    name: str
-    email: EmailStr
-    password: str
-    role: str  # 'warehouse_staff' or 'admin'
-
-
-class Token(BaseModel):
+class Session(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    role: str
+    role: Literal["vendor", "customer"]
     name: str
 
 
-class ProductOut(BaseModel):
-    id: int
-    name: str
-    category: str
-    unit: str
+# ---------------------------------------------------------
+# Products
+# ---------------------------------------------------------
+class ProductCreate(BaseModel):
+    product_name: str = Field(min_length=1, max_length=150)
+    price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+    quantity: int = Field(ge=0)
 
 
-class VendorOfferOut(BaseModel):
-    vendor_id: int
-    vendor_name: str
-    price: float
-    lead_time_days: int
-    rating: float
+class PriceUpdate(BaseModel):
+    price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
 
 
-class VendorListingIn(BaseModel):
-    product_id: int
-    price: float
-    lead_time_days: int
-
-
-class VendorListingOut(BaseModel):
+class VendorProduct(BaseModel):
     product_id: int
     product_name: str
-    price: float
-    lead_time_days: int
+    price: Decimal
+    quantity: int
+    created_at: datetime
+    updated_at: datetime
 
 
-class PlaceOrderRequest(BaseModel):
-    vendor_id: int
+class CatalogueProduct(BaseModel):
+    """What a customer sees: the product plus its supplier, resolved
+    through products.vendor_id -> vendors."""
+
     product_id: int
+    product_name: str
+    price: Decimal
+    available_quantity: int
+    vendor_id: int
+    supplier_name: str
+
+
+# ---------------------------------------------------------
+# Orders
+# ---------------------------------------------------------
+class OrderCreate(BaseModel):
+    product_id: int
+    quantity: int = Field(gt=0)
+
+
+class CancelRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class Order(BaseModel):
+    order_id: int
+    status: Literal["PENDING", "ACCEPTED", "REJECTED", "CANCELLED"]
     quantity: int
+    unit_price: Decimal
+    line_total: Decimal
+    cancellation_reason: Optional[str] = None
+    ordered_at: datetime
+    decided_at: Optional[datetime] = None
+    customer_name: str
+    product_id: int
+    product_name: str
+    supplier_name: str
 
 
-class ReserveStockRequest(BaseModel):
-    warehouse_id: int
+# ---------------------------------------------------------
+# Sales analytics
+# ---------------------------------------------------------
+class ProductSales(BaseModel):
+    product_name: str
+    orders_accepted: int
+    units_sold: int
+    revenue: Decimal
 
 
-class OrderOut(BaseModel):
-    id: int
-    buyer: str
-    vendor: str
-    product: str
-    quantity: int
-    unit_price: float
-    line_total: float
-    status: str
-    order_date: date
+class DailyOrders(BaseModel):
+    order_day: str
+    order_count: int
+    accepted_count: int
+    revenue: Decimal
+
+
+class SalesSummary(BaseModel):
+    total_revenue: Decimal
+    accepted_orders: int
+    pending_orders: int
+    sales_by_product: list[ProductSales]
+    orders_over_time: list[DailyOrders]
