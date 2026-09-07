@@ -1,98 +1,73 @@
+"""Register / login for the two roles. Logout is client-side: the token
+is simply discarded, since it carries its own expiry and no server session
+is kept."""
+
+import psycopg
 from fastapi import APIRouter, HTTPException
 
 from app.auth import create_access_token, hash_password, verify_password
-from app.database import get_connection
-from app.schemas import EnterpriseRegister, Login, StaffRegister, Token, VendorRegister
+from app.database import fetch_one, get_cursor
+from app.schemas import CustomerRegister, Login, Session, VendorRegister
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-@router.post("/register/vendor", response_model=Token)
+def _register(table: str, pk: str, name_col: str, name: str, email: str,
+              password: str, role: str) -> Session:
+    """Insert the account and hand back a token.
+
+    Uniqueness is not pre-checked with a SELECT: the UNIQUE constraint and
+    the cross-role trigger are the authority, and relying on them avoids a
+    race where two simultaneous registrations both see a free email.
+    """
+    try:
+        with get_cursor() as cur:
+            cur.execute(
+                f"INSERT INTO {table} ({name_col}, email, password_hash) "
+                f"VALUES (%s, %s, %s) RETURNING {pk} AS id",
+                (name.strip(), email.lower(), hash_password(password)),
+            )
+            user_id = cur.fetchone()["id"]
+    except psycopg.errors.UniqueViolation:
+        raise HTTPException(status_code=409, detail="That email is already registered.") from None
+    except psycopg.errors.RaiseException as exc:
+        # The cross-role trigger fires when the email exists under the other role.
+        raise HTTPException(status_code=409, detail=exc.diag.message_primary) from None
+
+    return Session(access_token=create_access_token(user_id, role), role=role, name=name.strip())
+
+
+@router.post("/register/vendor", response_model=Session, status_code=201)
 def register_vendor(body: VendorRegister):
-    conn = get_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id FROM `user` WHERE email = %s", (body.email,))
-            if cur.fetchone():
-                raise HTTPException(status_code=400, detail="Email already registered")
-
-            cur.execute(
-                "INSERT INTO `user` (name, email, password_hash, role) VALUES (%s, %s, %s, 'vendor')",
-                (body.name, body.email, hash_password(body.password)),
-            )
-            user_id = cur.lastrowid
-            cur.execute(
-                "INSERT INTO vendor (user_id, company_name, address) VALUES (%s, %s, %s)",
-                (user_id, body.company_name, body.address),
-            )
-        token = create_access_token({"user_id": user_id})
-        return Token(access_token=token, role="vendor", name=body.name)
-    finally:
-        conn.close()
+    return _register("vendors", "vendor_id", "company_name",
+                     body.company_name, body.email, body.password, "vendor")
 
 
-@router.post("/register/enterprise", response_model=Token)
-def register_enterprise(body: EnterpriseRegister):
-    conn = get_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id FROM `user` WHERE email = %s", (body.email,))
-            if cur.fetchone():
-                raise HTTPException(status_code=400, detail="Email already registered")
-
-            cur.execute(
-                "INSERT INTO `user` (name, email, password_hash, role) VALUES (%s, %s, %s, 'enterprise')",
-                (body.name, body.email, hash_password(body.password)),
-            )
-            user_id = cur.lastrowid
-            cur.execute(
-                "INSERT INTO enterprise (user_id, company_name, address) VALUES (%s, %s, %s)",
-                (user_id, body.company_name, body.address),
-            )
-        token = create_access_token({"user_id": user_id})
-        return Token(access_token=token, role="enterprise", name=body.name)
-    finally:
-        conn.close()
+@router.post("/register/customer", response_model=Session, status_code=201)
+def register_customer(body: CustomerRegister):
+    return _register("customers", "customer_id", "full_name",
+                     body.full_name, body.email, body.password, "customer")
 
 
-@router.post("/register/staff", response_model=Token)
-def register_staff(body: StaffRegister):
-    """Warehouse staff / admin signup. In a real deployment this would be
-    invite-only; kept open here so the prototype is demoable end-to-end."""
-    if body.role not in ("warehouse_staff", "admin"):
-        raise HTTPException(status_code=400, detail="role must be warehouse_staff or admin")
-    conn = get_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id FROM `user` WHERE email = %s", (body.email,))
-            if cur.fetchone():
-                raise HTTPException(status_code=400, detail="Email already registered")
-            cur.execute(
-                "INSERT INTO `user` (name, email, password_hash, role) VALUES (%s, %s, %s, %s)",
-                (body.name, body.email, hash_password(body.password), body.role),
-            )
-            user_id = cur.lastrowid
-        token = create_access_token({"user_id": user_id})
-        return Token(access_token=token, role=body.role, name=body.name)
-    finally:
-        conn.close()
-
-
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=Session)
 def login(body: Login):
-    conn = get_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, name, password_hash, role FROM `user` WHERE email = %s",
-                (body.email,),
-            )
-            user = cur.fetchone()
-    finally:
-        conn.close()
+    table, pk, name_col = (
+        ("vendors", "vendor_id", "company_name")
+        if body.role == "vendor"
+        else ("customers", "customer_id", "full_name")
+    )
+    row = fetch_one(
+        f"SELECT {pk} AS id, {name_col} AS name, password_hash FROM {table} WHERE email = %s",
+        (body.email.lower(),),
+    )
 
-    if not user or not verify_password(body.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+    # One message for both a missing account and a wrong password, so the
+    # response cannot be used to discover which emails are registered.
+    if row is None or not verify_password(body.password, row["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    token = create_access_token({"user_id": user["id"]})
-    return Token(access_token=token, role=user["role"], name=user["name"])
+    return Session(
+        access_token=create_access_token(row["id"], body.role),
+        role=body.role,
+        name=row["name"],
+    )
