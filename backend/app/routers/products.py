@@ -1,83 +1,135 @@
-from typing import List
+"""Product endpoints.
 
-from fastapi import APIRouter, Depends
+Vendor side: add, list, reprice and delete -- always scoped to the
+logged-in vendor, whose id comes from the token and never from the request.
+Customer side: browse and search the catalogue, and open one product to
+see its supplier.
+"""
 
-from app.auth import get_current_user, require_role
-from app.database import get_connection
-from app.schemas import ProductOut, VendorListingIn, VendorListingOut, VendorOfferOut
+from typing import Optional
+
+import psycopg
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.auth import require_customer, require_vendor
+from app.database import call_function, fetch_all, fetch_one, get_cursor
+from app.schemas import CatalogueProduct, PriceUpdate, ProductCreate, VendorProduct
 
 router = APIRouter(prefix="/products", tags=["products"])
 
 
-@router.get("", response_model=List[ProductOut])
-def list_products(current_user: dict = Depends(get_current_user)):
-    conn = get_connection()
+# =========================================================
+# Vendor
+# =========================================================
+@router.get("/mine", response_model=list[VendorProduct])
+def my_products(vendor: dict = Depends(require_vendor)):
+    """Requirement 3.2 -- the vendor's own catalogue, nobody else's."""
+    return fetch_all(
+        """
+        SELECT product_id, product_name, price, quantity, created_at, updated_at
+          FROM products
+         WHERE vendor_id = %s
+           AND is_active
+         ORDER BY product_name
+        """,
+        (vendor["id"],),
+    )
+
+
+@router.post("/mine", response_model=VendorProduct, status_code=201)
+def add_product(body: ProductCreate, vendor: dict = Depends(require_vendor)):
+    """Requirement 3.1 -- the product is tied to the logged-in vendor."""
     try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT p.id, p.name, c.name AS category, p.unit
-                FROM product p
-                JOIN category c ON c.id = p.category_id
-                ORDER BY p.name
-            """)
-            return cur.fetchall()
-    finally:
-        conn.close()
-
-
-@router.get("/{product_id}/vendors", response_model=List[VendorOfferOut])
-def compare_vendors(product_id: int, current_user: dict = Depends(get_current_user)):
-    """The multi-vendor price comparison feature: every vendor offering
-    this product, side by side, cheapest first."""
-    conn = get_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT v.id AS vendor_id, v.company_name AS vendor_name,
-                       vp.price, vp.lead_time_days, v.rating
-                FROM vendor_product vp
-                JOIN vendor v ON v.id = vp.vendor_id
-                WHERE vp.product_id = %s
-                ORDER BY vp.price ASC
-            """, (product_id,))
-            return cur.fetchall()
-    finally:
-        conn.close()
-
-
-@router.get("/my-listings", response_model=List[VendorListingOut])
-def my_listings(current_user: dict = Depends(require_role("vendor"))):
-    """A vendor's own product catalog: what they currently sell, and at what price."""
-    conn = get_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id FROM vendor WHERE user_id = %s", (current_user["id"],))
-            vendor = cur.fetchone()
-            cur.execute("""
-                SELECT vp.product_id, p.name AS product_name, vp.price, vp.lead_time_days
-                FROM vendor_product vp
-                JOIN product p ON p.id = vp.product_id
-                WHERE vp.vendor_id = %s
-                ORDER BY p.name
-            """, (vendor["id"],))
-            return cur.fetchall()
-    finally:
-        conn.close()
-
-
-@router.post("/my-listings", status_code=201)
-def upsert_listing(body: VendorListingIn, current_user: dict = Depends(require_role("vendor"))):
-    """Vendor adds a product to their catalog, or updates their price/lead time for it."""
-    conn = get_connection()
-    try:
-        with conn.cursor() as cur:
-            cur.execute("SELECT id FROM vendor WHERE user_id = %s", (current_user["id"],))
-            vendor = cur.fetchone()
-            cur.execute("""
-                INSERT INTO vendor_product (vendor_id, product_id, price, lead_time_days)
+        with get_cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO products (vendor_id, product_name, price, quantity)
                 VALUES (%s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE price = VALUES(price), lead_time_days = VALUES(lead_time_days)
-            """, (vendor["id"], body.product_id, body.price, body.lead_time_days))
-        return {"status": "ok"}
-    finally:
-        conn.close()
+                RETURNING product_id, product_name, price, quantity, created_at, updated_at
+                """,
+                (vendor["id"], body.product_name.strip(), body.price, body.quantity),
+            )
+            return cur.fetchone()
+    except psycopg.errors.UniqueViolation:
+        raise HTTPException(
+            status_code=409,
+            detail="You already have a product with that name.",
+        ) from None
+
+
+@router.patch("/mine/{product_id}/price", response_model=VendorProduct)
+def change_price(product_id: int, body: PriceUpdate, vendor: dict = Depends(require_vendor)):
+    """Requirement 3.3. The ownership check lives in update_product_price(),
+    so vendor B repricing vendor A's product is refused by the database."""
+    call_function("SELECT update_product_price(%s, %s, %s)",
+                  (product_id, vendor["id"], body.price))
+    return fetch_one(
+        """
+        SELECT product_id, product_name, price, quantity, created_at, updated_at
+          FROM products WHERE product_id = %s
+        """,
+        (product_id,),
+    )
+
+
+@router.delete("/mine/{product_id}")
+def remove_product(product_id: int, vendor: dict = Depends(require_vendor)):
+    """Requirement 3.4. delete_product() hard-deletes a product that was
+    never ordered and soft-deletes one that appears in order history, so
+    referential integrity and the historical record both survive."""
+    row = call_function("SELECT delete_product(%s, %s) AS outcome",
+                        (product_id, vendor["id"]))
+    archived = row["outcome"] == "archived"
+    return {
+        "outcome": row["outcome"],
+        "message": (
+            "Product archived. It still appears in existing orders, so its history is kept."
+            if archived
+            else "Product deleted."
+        ),
+    }
+
+
+# =========================================================
+# Customer
+# =========================================================
+@router.get("", response_model=list[CatalogueProduct])
+def browse_catalogue(
+    search: Optional[str] = Query(None, max_length=100),
+    _: dict = Depends(require_customer),
+):
+    """Requirements 5.1, 5.2 and 8.
+
+    Reads vw_available_products, which already excludes archived and
+    out-of-stock products, so nothing unorderable is ever listed. `search`
+    is a case-insensitive match on the product name.
+    """
+    sql = """
+        SELECT product_id, product_name, price, available_quantity,
+               vendor_id, supplier_name
+          FROM vw_available_products
+    """
+    params: tuple = ()
+    if search and search.strip():
+        sql += " WHERE product_name ILIKE %s"
+        params = (f"%{search.strip()}%",)
+    sql += " ORDER BY product_name"
+    return fetch_all(sql, params)
+
+
+@router.get("/{product_id}", response_model=CatalogueProduct)
+def product_detail(product_id: int, _: dict = Depends(require_customer)):
+    """Requirement 6 -- the supplier name comes from the vendors table
+    through the foreign key, never from a value copied onto the product."""
+    row = fetch_one(
+        """
+        SELECT product_id, product_name, price, available_quantity,
+               vendor_id, supplier_name
+          FROM vw_available_products
+         WHERE product_id = %s
+        """,
+        (product_id,),
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Product is not available.")
+    return row
