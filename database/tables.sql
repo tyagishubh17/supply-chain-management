@@ -15,6 +15,9 @@ CREATE TYPE order_status AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED'
 
 -- ---------------------------------------------------------
 -- vendors : a supplier who owns products and decides on orders
+-- vendor_id is the stable surrogate key used by products.vendor_id
+-- and by vendor-specific order operations.
+-- Email identifies the account and is enforced as unique separately.
 -- ---------------------------------------------------------
 CREATE TABLE vendors (
     vendor_id     SERIAL       PRIMARY KEY,
