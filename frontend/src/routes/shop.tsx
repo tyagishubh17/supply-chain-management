@@ -1,0 +1,4 @@
+import { createFileRoute } from "@tanstack/react-router";
+import { RoleGate } from "@/components/app-shell";
+import { ShopPage } from "@/features/products";
+export const Route=createFileRoute("/shop")({head:()=>({meta:[{title:"Browse Products — Supply Chain"},{name:"description",content:"Browse available products from multiple suppliers."},{property:"og:title",content:"Browse Products — Supply Chain"},{property:"og:description",content:"Browse available products from multiple suppliers."},{property:"og:type",content:"website"},{name:"twitter:card",content:"summary_large_image"}]}),component:()=> <RoleGate role="customer"><ShopPage/></RoleGate>});
