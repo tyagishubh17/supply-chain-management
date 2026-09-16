@@ -1,34 +1,41 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
 
 const AuthContext = createContext(null);
 
+const KEYS = { token: "scm_token", role: "scm_role", name: "scm_name" };
+
+// Where each role lands after signing in.
+export const HOME_BY_ROLE = {
+  vendor: "/vendor/products",
+  customer: "/shop",
+};
+
+function readSession() {
+  const token = localStorage.getItem(KEYS.token);
+  const role = localStorage.getItem(KEYS.role);
+  if (!token || !(role in HOME_BY_ROLE)) return null;
+  return { token, role, name: localStorage.getItem(KEYS.name) || "" };
+}
+
 export function AuthProvider({ children }) {
-  const [session, setSession] = useState(() => {
-    const token = localStorage.getItem("scm_token");
-    const role = localStorage.getItem("scm_role");
-    const name = localStorage.getItem("scm_name");
-    return token ? { token, role, name } : null;
-  });
+  const [session, setSession] = useState(readSession);
 
-  function login({ access_token, role, name }) {
-    localStorage.setItem("scm_token", access_token);
-    localStorage.setItem("scm_role", role);
-    localStorage.setItem("scm_name", name);
+  const login = useCallback(({ access_token, role, name }) => {
+    localStorage.setItem(KEYS.token, access_token);
+    localStorage.setItem(KEYS.role, role);
+    localStorage.setItem(KEYS.name, name);
     setSession({ token: access_token, role, name });
-  }
+  }, []);
 
-  function logout() {
-    localStorage.removeItem("scm_token");
-    localStorage.removeItem("scm_role");
-    localStorage.removeItem("scm_name");
+  const logout = useCallback(() => {
+    // Logging out is purely client-side: the token is discarded. It carries
+    // its own expiry and the server keeps no session to invalidate.
+    Object.values(KEYS).forEach((k) => localStorage.removeItem(k));
     setSession(null);
-  }
+  }, []);
 
-  return (
-    <AuthContext.Provider value={{ session, login, logout }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  const value = useMemo(() => ({ session, login, logout }), [session, login, logout]);
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
