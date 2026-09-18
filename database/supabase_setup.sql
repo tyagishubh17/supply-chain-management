@@ -26,9 +26,15 @@ DROP TABLE IF EXISTS vendors   CASCADE;
 
 DROP TYPE  IF EXISTS order_status CASCADE;
 
-DROP FUNCTION IF EXISTS place_order(INTEGER, INTEGER, INTEGER)          CASCADE;
-DROP FUNCTION IF EXISTS place_order(INTEGER, INTEGER, INTEGER, TEXT, VARCHAR) CASCADE;
-DROP FUNCTION IF EXISTS accept_order(INTEGER, INTEGER)                  CASCADE;
+DROP FUNCTION IF EXISTS place_order(INTEGER, INTEGER, INTEGER)
+    CASCADE;
+
+DROP FUNCTION IF EXISTS place_order(
+    INTEGER, INTEGER, INTEGER, TEXT, VARCHAR
+) CASCADE;
+
+DROP FUNCTION IF EXISTS accept_order(INTEGER, INTEGER)
+    CASCADE;
 DROP FUNCTION IF EXISTS reject_order(INTEGER, INTEGER)                  CASCADE;
 DROP FUNCTION IF EXISTS cancel_order(INTEGER, INTEGER, TEXT)            CASCADE;
 DROP FUNCTION IF EXISTS update_product_price(INTEGER, INTEGER, NUMERIC) CASCADE;
@@ -173,7 +179,8 @@ ALTER TABLE products
     ADD CONSTRAINT chk_products_quantity_non_negative CHECK (quantity >= 0);
 
 ALTER TABLE products
-    ADD CONSTRAINT chk_products_name_not_blank CHECK (length(btrim(product_name)) > 0);
+    ADD CONSTRAINT chk_products_name_not_blank
+    CHECK (length(btrim(product_name)) > 0);
 
 -- An order must always be for at least one unit.
 ALTER TABLE orders
@@ -186,11 +193,18 @@ ALTER TABLE orders
 -- meaningful on, a CANCELLED order. One CHECK enforces both directions,
 -- so a cancellation can never be recorded without a stored reason.
 ALTER TABLE orders
-    ADD CONSTRAINT chk_orders_cancellation_reason CHECK (
-        (status = 'CANCELLED' AND cancellation_reason IS NOT NULL
-                              AND length(btrim(cancellation_reason)) > 0)
+    ADD CONSTRAINT chk_orders_cancellation_reason
+    CHECK (
+        (
+            status = 'CANCELLED'
+            AND cancellation_reason IS NOT NULL
+            AND length(btrim(cancellation_reason)) > 0
+        )
         OR
-        (status <> 'CANCELLED' AND cancellation_reason IS NULL)
+        (
+            status <> 'CANCELLED'
+            AND cancellation_reason IS NULL
+        )
     );
 
 -- A decision timestamp exists exactly when the order has left PENDING.
@@ -210,12 +224,24 @@ CREATE OR REPLACE FUNCTION trg_check_email_unique_across_roles()
 RETURNS TRIGGER AS $$
 BEGIN
     IF TG_TABLE_NAME = 'vendors' THEN
-        IF EXISTS (SELECT 1 FROM customers WHERE email = NEW.email) THEN
-            RAISE EXCEPTION 'Email % is already registered as a customer', NEW.email;
+        IF EXISTS (
+            SELECT 1
+            FROM customers
+            WHERE email = NEW.email
+        ) THEN
+            RAISE EXCEPTION
+                'Email % is already registered as a customer',
+                NEW.email;
         END IF;
     ELSE
-        IF EXISTS (SELECT 1 FROM vendors WHERE email = NEW.email) THEN
-            RAISE EXCEPTION 'Email % is already registered as a vendor', NEW.email;
+        IF EXISTS (
+            SELECT 1
+            FROM vendors
+            WHERE email = NEW.email
+        ) THEN
+            RAISE EXCEPTION
+                'Email % is already registered as a vendor',
+                NEW.email;
         END IF;
     END IF;
     RETURN NEW;
@@ -312,11 +338,16 @@ BEGIN
         RAISE EXCEPTION 'Order quantity must be at least 1.';
     END IF;
 
-    SELECT quantity, price, is_active
-      INTO v_available, v_price, v_active
-      FROM products
-     WHERE product_id = p_product_id
-     FOR UPDATE;
+
+     SELECT quantity,
+            price,
+            is_active
+        INTO v_available,
+            v_price,
+            v_active
+        FROM products
+        WHERE product_id = p_product_id
+        FOR UPDATE;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Product not found.';
@@ -334,13 +365,26 @@ BEGIN
         RAISE EXCEPTION 'Only % units are currently available.', v_available;
     END IF;
 
+
+
+
     INSERT INTO orders (
-        customer_id, product_id, quantity, unit_price, status,
-        shipping_address, contact_phone
+        customer_id,
+        product_id,
+        quantity,
+        unit_price,
+        status,
+        shipping_address,
+        contact_phone
     )
     VALUES (
-        p_customer_id, p_product_id, p_quantity, v_price, 'PENDING',
-        nullif(btrim(p_shipping_address), ''), nullif(btrim(p_contact_phone), '')
+        p_customer_id,
+        p_product_id,
+        p_quantity,
+        v_price,
+        'PENDING',
+        nullif(btrim(p_shipping_address), ''),
+        nullif(btrim(p_contact_phone), '')
     )
     RETURNING order_id INTO v_order_id;
 
@@ -395,8 +439,8 @@ BEGIN
     END IF;
 
     UPDATE products
-       SET quantity = quantity - v_ordered
-     WHERE product_id = v_product_id;
+    SET quantity = quantity - v_ordered
+    WHERE product_id = v_product_id;
 
     UPDATE orders
        SET status = 'ACCEPTED', decided_at = now()
@@ -685,10 +729,13 @@ SELECT p.product_id,
        v.company_name AS supplier_name,
        p.created_at,
        p.updated_at
-  FROM products p
-  JOIN vendors  v ON v.vendor_id = p.vendor_id
- WHERE p.is_active
-   AND p.quantity > 0;
+
+
+   FROM products AS p
+        JOIN vendors AS v
+            ON v.vendor_id = p.vendor_id
+        WHERE p.is_active
+        AND p.quantity > 0;
 
 
 -- ---------------------------------------------------------
@@ -732,9 +779,12 @@ CREATE OR REPLACE VIEW vw_vendor_product_sales AS
 SELECT p.vendor_id,
        p.product_id,
        p.product_name,
-       count(o.order_id)                       AS orders_accepted,
-       COALESCE(sum(o.quantity), 0)            AS units_sold,
-       COALESCE(sum(o.quantity * o.unit_price), 0) AS revenue
+       count(o.order_id) AS orders_accepted,
+       COALESCE(sum(o.quantity), 0) AS units_sold,
+       COALESCE(
+           sum(o.quantity * o.unit_price),
+           0
+       ) AS revenue
   FROM products p
   LEFT JOIN orders o
          ON o.product_id = p.product_id
@@ -767,10 +817,15 @@ TRUNCATE orders, products, customers, vendors RESTART IDENTITY CASCADE;
 -- ---------------------------------------------------------
 -- Vendors  (vendor_id 1..3)
 -- ---------------------------------------------------------
-INSERT INTO vendors (company_name, email, password_hash) VALUES
-('ABC Electronics',  'abc@vendor.com',    '$2b$10$m24vYDrZzTlWA5KZGHyRfeO.mtLV6RhuddIjoQJSgOc0aed79mTZG'),
-('Sharma Textiles',  'sharma@vendor.com', '$2b$10$m24vYDrZzTlWA5KZGHyRfeO.mtLV6RhuddIjoQJSgOc0aed79mTZG'),
-('Verma Packaging',  'verma@vendor.com',  '$2b$10$m24vYDrZzTlWA5KZGHyRfeO.mtLV6RhuddIjoQJSgOc0aed79mTZG');
+INSERT INTO vendors (
+    company_name,
+    email,
+    password_hash
+)
+VALUES
+    ('ABC Electronics', 'abc@vendor.com', '...'),
+    ('Sharma Textiles', 'sharma@vendor.com', '...'),
+    ('Verma Packaging', 'verma@vendor.com', '...');
 
 
 -- ---------------------------------------------------------
@@ -810,7 +865,18 @@ INSERT INTO products (vendor_id, product_name, price, quantity) VALUES
 --
 -- unit_price is the price at order time, which is why it is stored on
 -- the order rather than read from products.
-INSERT INTO orders (customer_id, product_id, quantity, unit_price, status, cancellation_reason, ordered_at, decided_at) VALUES
+
+INSERT INTO orders (
+    customer_id,
+    product_id,
+    quantity,
+    unit_price,
+    status,
+    cancellation_reason,
+    ordered_at,
+    decided_at
+)
+VALUES
 -- accepted (these are the only rows that count as revenue)
 (1, 1, 2, 45000.00, 'ACCEPTED', NULL, now() - INTERVAL '34 days', now() - INTERVAL '33 days'),
 (3, 3, 100,  120.00, 'ACCEPTED', NULL, now() - INTERVAL '28 days', now() - INTERVAL '28 days'),
@@ -842,13 +908,16 @@ INSERT INTO orders (customer_id, product_id, quantity, unit_price, status, cance
 -- ACCEPTED order, and nothing for PENDING, REJECTED or CANCELLED ones.
 -- (A cancelled order that had been accepted would have had its units
 -- returned, so it nets to zero either way.)
-UPDATE products p
-   SET quantity = p.quantity - sold.units
-  FROM (SELECT product_id, sum(quantity) AS units
-          FROM orders
-         WHERE status = 'ACCEPTED'
-         GROUP BY product_id) AS sold
- WHERE p.product_id = sold.product_id;
+UPDATE products AS p
+SET quantity = p.quantity - sold.units
+FROM (
+    SELECT product_id,
+           sum(quantity) AS units
+    FROM orders
+    WHERE status = 'ACCEPTED'
+    GROUP BY product_id
+) AS sold
+WHERE p.product_id = sold.product_id;
 
 
 -- ---------------------------------------------------------
