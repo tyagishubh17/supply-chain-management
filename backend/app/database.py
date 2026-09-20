@@ -31,7 +31,14 @@ pool = ConnectionPool(
     DATABASE_URL,
     min_size=1,
     max_size=int(os.getenv("DB_POOL_MAX", "5")),
-    kwargs={"row_factory": dict_row},
+    # prepare_threshold=None keeps psycopg from caching prepared statements.
+    # Without it, the first query after the schema is reloaded fails with
+    # "cached plan must not change result type" -- schema.sql recreates the
+    # order_status type, so the cached plan's result type no longer exists --
+    # and returns a 500. The same applies to any migration run against a live
+    # database. Parsing each execution is cheap next to a network round trip
+    # to a remote database.
+    kwargs={"row_factory": dict_row, "prepare_threshold": None},
     # Opened explicitly by the app's lifespan handler, so a bad
     # DATABASE_URL fails at start-up rather than on the first request.
     open=False,
