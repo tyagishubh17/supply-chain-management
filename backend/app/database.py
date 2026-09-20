@@ -38,7 +38,10 @@ pool = ConnectionPool(
     # and returns a 500. The same applies to any migration run against a live
     # database. Parsing each execution is cheap next to a network round trip
     # to a remote database.
-    kwargs={"row_factory": dict_row, "prepare_threshold": None},
+    kwargs={
+        "row_factory": dict_row,
+        "prepare_threshold": None,
+    },
     # Opened explicitly by the app's lifespan handler, so a bad
     # DATABASE_URL fails at start-up rather than on the first request.
     open=False,
@@ -58,7 +61,10 @@ def get_cursor():
             yield cur
 
 
-def fetch_all(sql: str, params: tuple = ()) -> list[dict]:
+def fetch_all(
+    sql: str,
+    params: tuple = (),
+) -> list[dict]:
     with get_cursor() as cur:
         cur.execute(sql, params)
         return cur.fetchall()
@@ -70,7 +76,10 @@ def fetch_one(sql: str, params: tuple = ()) -> dict | None:
         return cur.fetchone()
 
 
-def call_function(sql: str, params: tuple = ()) -> dict | None:
+def call_function(
+    sql: str,
+    params: tuple = (),
+) -> dict | None:
     """Run a statement that may RAISE EXCEPTION inside PL/pgSQL.
 
     The database is the authority on the business rules, so its message is
@@ -84,7 +93,11 @@ def call_function(sql: str, params: tuple = ()) -> dict | None:
     try:
         with get_cursor() as cur:
             cur.execute(sql, params)
-            return cur.fetchone() if cur.description else None
+            return (
+                cur.fetchone()
+                if cur.description
+                else None
+            )
     except psycopg.errors.RaiseException as exc:
         raise HTTPException(status_code=400, detail=_message(exc)) from exc
     except psycopg.errors.IntegrityError as exc:
@@ -92,4 +105,6 @@ def call_function(sql: str, params: tuple = ()) -> dict | None:
 
 
 def _message(exc: psycopg.Error) -> str:
-    return (exc.diag.message_primary or str(exc)).strip()
+    return (
+        exc.diag.message_primary or str(exc)
+    ).strip()
