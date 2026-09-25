@@ -5,7 +5,9 @@
 -- =========================================================
 
 -- ---------------------------------------------------------
--- UNIQUE : an email identifies exactly one account
+-- UNIQUE : an email identifies exactly one account.
+-- Vendor and customer emails are unique within their respective tables.
+-- Cross-role uniqueness is enforced separately by the trigger below.
 -- ---------------------------------------------------------
 ALTER TABLE vendors   ADD CONSTRAINT uq_vendors_email   UNIQUE (email);
 ALTER TABLE customers ADD CONSTRAINT uq_customers_email UNIQUE (email);
@@ -40,6 +42,9 @@ ALTER TABLE orders
 -- ---------------------------------------------------------
 -- CHECK constraints
 -- ---------------------------------------------------------
+-- These constraints enforce basic domain validity directly at the
+-- database level, preventing invalid prices, quantities, names,
+-- cancellation reasons, and decision timestamps.
 ALTER TABLE products
     ADD CONSTRAINT chk_products_price_non_negative CHECK (price >= 0);
 
@@ -52,6 +57,7 @@ ALTER TABLE products
 -- An order must always be for at least one unit.
 ALTER TABLE orders
     ADD CONSTRAINT chk_orders_quantity_positive CHECK (quantity > 0);
+
 
 ALTER TABLE orders
     ADD CONSTRAINT chk_orders_unit_price_non_negative CHECK (unit_price >= 0);
@@ -83,6 +89,7 @@ ALTER TABLE orders
 CREATE OR REPLACE FUNCTION trg_check_email_unique_across_roles()
 RETURNS TRIGGER AS $$
 BEGIN
+
     IF TG_TABLE_NAME = 'vendors' THEN
         IF EXISTS (SELECT 1 FROM customers WHERE email = NEW.email) THEN
             RAISE EXCEPTION 'Email % is already registered as a customer', NEW.email;
@@ -106,6 +113,8 @@ CREATE TRIGGER trg_customers_email_unique
 
 -- ---------------------------------------------------------
 -- INDEXES
+
+
 -- ---------------------------------------------------------
 -- A vendor may not list the same product name twice, but a soft-deleted
 -- name is freed up for re-use, so the unique index is partial.
@@ -113,13 +122,22 @@ CREATE UNIQUE INDEX uq_products_vendor_name_active
     ON products (vendor_id, lower(btrim(product_name)))
     WHERE is_active;
 
--- Supports "list my products" and the customer catalogue join.
-CREATE INDEX idx_products_vendor    ON products (vendor_id);
+-- Supports vendor product listings and joins between products and vendors.
+CREATE INDEX idx_products_vendor ON products (vendor_id);
 
--- Supports the customer's case-insensitive product-name search.
+
+
+-- Supports case-insensitive product-name searches by matching the
+-- same lower(product_name) expression used by catalogue lookups.
 CREATE INDEX idx_products_name_lower ON products (lower(product_name));
 
--- Supports "my orders" (customer) and the vendor's incoming-order queue.
+
+
+-- Supports customer order-history lookups.
 CREATE INDEX idx_orders_customer ON orders (customer_id);
-CREATE INDEX idx_orders_product  ON orders (product_id);
-CREATE INDEX idx_orders_status   ON orders (status);
+
+-- Supports product-related order lookups and joins.
+CREATE INDEX idx_orders_product ON orders (product_id);
+
+-- Supports filtering orders by their workflow status.
+CREATE INDEX idx_orders_status ON orders (status);
