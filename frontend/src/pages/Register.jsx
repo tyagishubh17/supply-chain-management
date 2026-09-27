@@ -1,98 +1,93 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api } from "../api";
-import { useAuth } from "../auth/AuthContext";
-
-const ROLES = [
-  { key: "enterprise", label: "Enterprise" },
-  { key: "vendor", label: "Vendor" },
-  { key: "warehouse_staff", label: "Warehouse" },
-];
+import { HOME_BY_ROLE, useAuth } from "../auth/AuthContext";
 
 export default function Register() {
-  const [role, setRole] = useState("enterprise");
-  const [form, setForm] = useState({ name: "", email: "", password: "", company_name: "", address: "" });
+  const [role, setRole] = useState("customer");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  function update(field, value) {
-    setForm((f) => ({ ...f, [field]: value }));
-  }
+  const isVendor = role === "vendor";
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
-    setLoading(true);
+    setBusy(true);
     try {
-      let data;
-      if (role === "enterprise") {
-        data = await api.registerEnterprise(form);
-      } else if (role === "vendor") {
-        data = await api.registerVendor(form);
-      } else {
-        data = await api.registerStaff({ name: form.name, email: form.email, password: form.password, role: "warehouse_staff" });
-      }
-      login(data);
-      navigate("/");
+      const session = isVendor
+        ? await api.registerVendor({ company_name: name, email, password })
+        : await api.registerCustomer({ full_name: name, email, password });
+      login(session);
+      navigate(HOME_BY_ROLE[session.role], { replace: true });
     } catch (err) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }
 
   return (
     <div className="auth-shell">
       <div className="auth-box">
-        <span className="mark">SCM // OPS</span>
-        <h1>Create account</h1>
+        <span className="mark">Supply Chain</span>
+        <h1>Create an account</h1>
 
-        <div className="role-switch">
-          {ROLES.map((r) => (
-            <button
-              key={r.key}
-              type="button"
-              className={role === r.key ? "active" : ""}
-              onClick={() => setRole(r.key)}
-            >
-              {r.label}
-            </button>
-          ))}
+        <div className="role-toggle">
+          <button type="button" aria-pressed={!isVendor} onClick={() => setRole("customer")}>
+            Customer
+          </button>
+          <button type="button" aria-pressed={isVendor} onClick={() => setRole("vendor")}>
+            Vendor
+          </button>
         </div>
 
         {error && <div className="error-box">{error}</div>}
 
         <form onSubmit={handleSubmit}>
           <div className="field">
-            <label>Full name</label>
-            <input value={form.name} onChange={(e) => update("name", e.target.value)} required />
+            <label htmlFor="name">{isVendor ? "Company name" : "Full name"}</label>
+            <input
+              id="name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              minLength={2}
+              maxLength={150}
+              required
+            />
           </div>
           <div className="field">
-            <label>Email</label>
-            <input type="email" value={form.email} onChange={(e) => update("email", e.target.value)} required />
+            <label htmlFor="email">Email</label>
+            <input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
           </div>
           <div className="field">
-            <label>Password</label>
-            <input type="password" value={form.password} onChange={(e) => update("password", e.target.value)} required />
+            <label htmlFor="password">Password</label>
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              minLength={6}
+              maxLength={72}
+              required
+            />
           </div>
-          {role !== "warehouse_staff" && (
-            <>
-              <div className="field">
-                <label>Company name</label>
-                <input value={form.company_name} onChange={(e) => update("company_name", e.target.value)} required />
-              </div>
-              <div className="field">
-                <label>Address</label>
-                <input value={form.address} onChange={(e) => update("address", e.target.value)} />
-              </div>
-            </>
-          )}
-          <button className="btn" style={{ width: "100%" }} disabled={loading}>
-            {loading ? "Creating..." : "Create account"}
+          <button className="btn" disabled={busy}>
+            {busy ? "Creating account…" : `Register as ${role}`}
           </button>
         </form>
+
         <div className="hint">
           Already registered? <Link to="/login">Sign in</Link>
         </div>
