@@ -17,18 +17,35 @@ from app.schemas import CancelRequest, Order, OrderCreate
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 # vw_order_details already joins orders -> customers, products, vendors.
+
 _ORDER_COLUMNS = """
-    order_id, status, quantity, unit_price, line_total, cancellation_reason,
-    ordered_at, decided_at, customer_name, product_id, product_name, supplier_name,
-    shipping_address, contact_phone, current_stock
+    order_id,
+    status,
+    quantity,
+    unit_price,
+    line_total,
+    cancellation_reason,
+    ordered_at,
+    decided_at,
+    customer_name,
+    product_id,
+    product_name,
+    supplier_name,
+    shipping_address,
+    contact_phone,
+    current_stock
 """
 
 
 # =========================================================
 # Customer
 # =========================================================
+# Customer order creation and order-history operations.
 @router.post("", status_code=201)
-def place_order(body: OrderCreate, customer: dict = Depends(require_customer)):
+def place_order(
+    body: OrderCreate,
+    customer: dict = Depends(require_customer),
+):
     """Requirements 7 and 8.
 
     place_order() rejects a quantity above what is available and returns
@@ -49,16 +66,25 @@ def place_order(body: OrderCreate, customer: dict = Depends(require_customer)):
 
 
 @router.post("/{order_id}/cancel-my-order")
-def customer_cancel_order(order_id: int, customer: dict = Depends(require_customer)):
+def customer_cancel_order(
+    order_id: int,
+    customer: dict = Depends(require_customer),
+):
     """Allows a customer to cancel their own PENDING order."""
     call_function("SELECT customer_cancel_order(%s, %s)", (order_id, customer["id"]))
-    return {"order_id": order_id, "status": "CANCELLED", "cancellation_reason": "Cancelled by customer"}
+    return {
+        "order_id": order_id,
+        "status": "CANCELLED",
+        "cancellation_reason": "Cancelled by customer",
+    }
 
 
 @router.get("/mine", response_model=list[Order])
 def my_orders(customer: dict = Depends(require_customer)):
-    """Requirement 14 -- own order history only, including the cancellation
-    reason when a vendor has cancelled."""
+    """Return the customer's own order history.
+
+    Includes the cancellation reason when a vendor has cancelled an order.
+    """
     return fetch_all(
         f"SELECT {_ORDER_COLUMNS} FROM vw_order_details "
         f"WHERE customer_id = %s ORDER BY ordered_at DESC",
@@ -71,8 +97,10 @@ def my_orders(customer: dict = Depends(require_customer)):
 # =========================================================
 @router.get("/incoming", response_model=list[Order])
 def incoming_orders(vendor: dict = Depends(require_vendor)):
-    """Requirement 10 -- orders for this vendor's products only. Pending
-    ones first, since those are the ones needing a decision."""
+    """Return incoming orders for the vendor's products.
+
+    Pending orders are listed first because they require a decision.
+    """
     return fetch_all(
         f"""
         SELECT {_ORDER_COLUMNS} FROM vw_order_details
@@ -84,7 +112,10 @@ def incoming_orders(vendor: dict = Depends(require_vendor)):
 
 
 @router.post("/{order_id}/accept")
-def accept_order(order_id: int, vendor: dict = Depends(require_vendor)):
+def accept_order(
+    order_id: int,
+    vendor: dict = Depends(require_vendor),
+):
     """Requirement 11 -- the single place inventory decreases. Verifying
     the order is pending, re-verifying stock, decrementing the product and
     setting the status all happen atomically in accept_order()."""
@@ -93,16 +124,30 @@ def accept_order(order_id: int, vendor: dict = Depends(require_vendor)):
 
 
 @router.post("/{order_id}/reject")
-def reject_order(order_id: int, vendor: dict = Depends(require_vendor)):
+def reject_order(
+    order_id: int,
+    vendor: dict = Depends(require_vendor),
+):
     """Requirement 12 -- status only; inventory is not touched."""
     call_function("SELECT reject_order(%s, %s)", (order_id, vendor["id"]))
     return {"order_id": order_id, "status": "REJECTED"}
 
 
 @router.post("/{order_id}/cancel")
-def cancel_order(order_id: int, body: CancelRequest, vendor: dict = Depends(require_vendor)):
+def cancel_order(
+    order_id: int,
+    body: CancelRequest,
+    vendor: dict = Depends(require_vendor),
+):
     """Requirement 13 -- the reason is mandatory and is persisted on the
     order row, so both dashboards can display it. Cancelling an order that
     was already accepted returns its units to stock."""
-    call_function("SELECT cancel_order(%s, %s, %s)", (order_id, vendor["id"], body.reason))
-    return {"order_id": order_id, "status": "CANCELLED", "cancellation_reason": body.reason.strip()}
+    call_function(
+        "SELECT cancel_order(%s, %s, %s)",
+        (order_id, vendor["id"], body.reason),
+    )
+    return {
+        "order_id": order_id,
+        "status": "CANCELLED",
+        "cancellation_reason": body.reason.strip(),
+    }
