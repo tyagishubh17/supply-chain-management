@@ -16,25 +16,41 @@ from pydantic import BaseModel, EmailStr, Field
 # ---------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------
+
 class VendorRegister(BaseModel):
-    company_name: str = Field(min_length=2, max_length=150)
+    company_name: str = Field(
+        min_length=2,
+        max_length=150,
+    )
     email: EmailStr
-    password: str = Field(min_length=6, max_length=72)  # bcrypt caps at 72 bytes
+    # bcrypt only processes passwords up to 72 bytes.
+    password: str = Field(
+        min_length=6,
+        max_length=72,
+    )
 
 
 class CustomerRegister(BaseModel):
-    full_name: str = Field(min_length=2, max_length=150)
+    full_name: str = Field(
+        min_length=2,
+        max_length=150,
+    )
     email: EmailStr
-    password: str = Field(min_length=6, max_length=72)
+    password: str = Field(
+        min_length=6,
+        max_length=72,
+    )
 
 
 class Login(BaseModel):
+    """Credentials and role used when signing in."""
     email: EmailStr
     password: str
     role: Literal["vendor", "customer"]
 
 
 class Session(BaseModel):
+    """Authentication details returned after a successful login."""
     access_token: str
     token_type: str = "bearer"
     role: Literal["vendor", "customer"]
@@ -45,16 +61,28 @@ class Session(BaseModel):
 # Products
 # ---------------------------------------------------------
 class ProductCreate(BaseModel):
-    product_name: str = Field(min_length=1, max_length=150)
-    price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+    product_name: str = Field(
+        min_length=1,
+        max_length=150,
+    )
+    price: Decimal = Field(
+        ge=0,
+        max_digits=10,
+        decimal_places=2,
+    )
     quantity: int = Field(ge=0)
 
 
 class PriceUpdate(BaseModel):
-    price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
+    price: Decimal = Field(
+        ge=0,
+        max_digits=10,
+        decimal_places=2,
+    )
 
 
 class StockRestock(BaseModel):
+    """Quantity added to the existing product stock."""
     added_quantity: int = Field(gt=0)
 
 
@@ -68,8 +96,10 @@ class VendorProduct(BaseModel):
 
 
 class CatalogueProduct(BaseModel):
-    """What a customer sees: the product plus its supplier, resolved
-    through products.vendor_id -> vendors."""
+    """Product information shown in the customer catalogue.
+
+    The supplier is resolved through products.vendor_id -> vendors.
+    """
 
     product_id: int
     product_name: str
@@ -85,15 +115,23 @@ class CatalogueProduct(BaseModel):
 class OrderCreate(BaseModel):
     product_id: int
     quantity: int = Field(gt=0)
-    shipping_address: Optional[str] = Field(None, max_length=500)
-    contact_phone: Optional[str] = Field(None, max_length=25)
+    shipping_address: Optional[str] = Field(
+        None,
+        max_length=500,
+    )
+    contact_phone: Optional[str] = Field(
+        None,
+        max_length=25,
+    )
 
 
 class CancelRequest(BaseModel):
+    """Reason supplied when cancelling an order."""
     reason: str = Field(min_length=3, max_length=500)
 
 
 class Order(BaseModel):
+    """Order details returned by the API."""
     order_id: int
     status: Literal["PENDING", "ACCEPTED", "REJECTED", "CANCELLED"]
     quantity: int
@@ -115,6 +153,7 @@ class Order(BaseModel):
 # Sales analytics
 # ---------------------------------------------------------
 class ProductSales(BaseModel):
+    """Sales totals grouped by product."""
     product_name: str
     orders_accepted: int
     units_sold: int
@@ -122,6 +161,7 @@ class ProductSales(BaseModel):
 
 
 class DailyOrders(BaseModel):
+    """Order and revenue totals grouped by day."""
     order_day: str
     order_count: int
     accepted_count: int
@@ -129,6 +169,7 @@ class DailyOrders(BaseModel):
 
 
 class SalesSummary(BaseModel):
+    """Overall sales metrics and supporting breakdowns."""
     total_revenue: Decimal
     accepted_orders: int
     pending_orders: int
