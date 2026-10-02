@@ -25,7 +25,7 @@ async def lifespan(_: FastAPI):
     yield
     pool.close()
 
-
+# Create the FastAPI application and configure its metadata.
 app = FastAPI(
     title="Multi-Vendor Supply Chain Management API",
     description="Vendor and customer API over a Supabase PostgreSQL database.",
@@ -35,12 +35,18 @@ app = FastAPI(
 
 # Only the dev frontend is allowed by default. Override with a
 # comma-separated CORS_ORIGINS in .env when deploying.
+# Allow the local development frontend by default.
+# Override with comma-separated CORS_ORIGINS in .env for deployment.
 origins = [
     o.strip()
-    for o in os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+    for o in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
     if o.strip()
 ]
 
+# Configure cross-origin requests for the frontend.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -49,6 +55,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
+# Register API routers for each major application area.
 app.include_router(auth.router)
 app.include_router(products.router)
 app.include_router(orders.router)
