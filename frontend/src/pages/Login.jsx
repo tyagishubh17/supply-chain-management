@@ -44,7 +44,7 @@ export default function Login() {
           </button>
         </div>
 
-        {error && <div className="error-box">{error}</div>}
+        {error && <div className="error-box" role="alert">{error}</div>}
 
         <form onSubmit={handleSubmit}>
           <div className="field">

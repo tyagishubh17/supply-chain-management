@@ -34,6 +34,16 @@ export default function VendorOrders() {
     load();
   }, [load]);
 
+  // Escape closes the dialog, the same as clicking the backdrop.
+  useEffect(() => {
+    if (!cancelling) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setCancelling(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cancelling]);
+
   async function act(order, action) {
     setError("");
     setNotice("");
@@ -88,12 +98,12 @@ export default function VendorOrders() {
         </p>
       </div>
 
-      {error && <div className="error-box">{error}</div>}
-      {notice && <div className="notice-box">{notice}</div>}
+      {error && <div className="error-box" role="alert">{error}</div>}
+      {notice && <div className="notice-box" role="status">{notice}</div>}
 
       <div className="panel">
         {orders === null ? (
-          <div className="loading">Loading…</div>
+          <div className="loading" role="status">Loading…</div>
         ) : orders.length === 0 ? (
           error ? null : <div className="empty-state">No orders yet.</div>
         ) : (
@@ -180,14 +190,14 @@ export default function VendorOrders() {
 
       {cancelling && (
         <div className="modal-backdrop" onClick={() => setCancelling(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label={`Cancel order #${cancelling.order_id}`} onClick={(e) => e.stopPropagation()}>
             <h2>Cancel order #{cancelling.order_id}</h2>
             <p style={{ marginTop: 0, fontSize: "0.9rem", color: "var(--text-muted)" }}>
               {cancelling.quantity} × {cancelling.product_name} for {cancelling.customer_name}.
               {cancelling.status === "ACCEPTED" &&
                 " This order was already accepted, so the units return to your stock."}
             </p>
-            {cancelError && <div className="error-box">{cancelError}</div>}
+            {cancelError && <div className="error-box" role="alert">{cancelError}</div>}
             <form onSubmit={submitCancel}>
               <div className="field">
                 <label htmlFor="reason">Reason for cancellation (required)</label>

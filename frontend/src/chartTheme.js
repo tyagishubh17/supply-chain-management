@@ -9,13 +9,6 @@ export const CHART = {
   text: "#23211c",
 };
 
-// Money formatted the way the rest of the app shows it.
-export const formatCurrency = (value) =>
-  `₹${Number(value ?? 0).toLocaleString("en-IN", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  })}`;
-
 // Charts label days as "12 Sep"; tables show the full date separately.
 export const formatDayLabel = (isoDay) => {
   const d = new Date(`${isoDay}T00:00:00`);
