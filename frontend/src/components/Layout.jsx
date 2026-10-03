@@ -40,6 +40,7 @@ export default function Layout() {
               key={item.to}
               to={item.to}
               className={({ isActive }) => (isActive ? "active" : "")}
+              aria-current={({ isActive }) => (isActive ? "page" : undefined)}
             >
               {item.label}
             </NavLink>
@@ -49,7 +50,7 @@ export default function Layout() {
         <div className="sidebar-footer">
           <span className="role-tag">{session?.role}</span>
           <div className="name">{session?.name}</div>
-          <button className="btn btn-ghost btn-sm" onClick={handleLogout}>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={handleLogout}>
             Log out
           </button>
         </div>

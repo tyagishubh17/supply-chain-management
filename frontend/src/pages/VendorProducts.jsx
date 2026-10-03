@@ -39,6 +39,16 @@ export default function VendorProducts() {
     load();
   }, [load]);
 
+  // Escape closes the dialog, the same as clicking the backdrop.
+  useEffect(() => {
+    if (!confirmDelete) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setConfirmDelete(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [confirmDelete]);
+
   async function handleAdd(e) {
     e.preventDefault();
     setError("");
@@ -110,8 +120,8 @@ export default function VendorProducts() {
         <p>Products you supply. Quantity falls only when you accept an order.</p>
       </div>
 
-      {error && <div className="error-box">{error}</div>}
-      {notice && <div className="notice-box">{notice}</div>}
+      {error && <div className="error-box" role="alert">{error}</div>}
+      {notice && <div className="notice-box" role="status">{notice}</div>}
 
       <div className="panel">
         <h2>Add a product</h2>
@@ -164,7 +174,7 @@ export default function VendorProducts() {
         </p>
 
         {products === null ? (
-          <div className="loading">Loading…</div>
+          <div className="loading" role="status">Loading…</div>
         ) : products.length === 0 ? (
           error ? null : (
             <div className="empty-state">No products yet. Add your first one above.</div>
@@ -256,14 +266,14 @@ export default function VendorProducts() {
 
       {confirmDelete && (
         <div className="modal-backdrop" onClick={() => setConfirmDelete(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label="Delete product" onClick={(e) => e.stopPropagation()}>
             <h2>Delete product</h2>
             <p style={{ marginTop: 0, fontSize: "0.9rem" }}>
               Remove <strong>{confirmDelete.product_name}</strong> from your catalogue?
               If it appears in existing orders it is archived instead of deleted,
               so the order history is preserved.
             </p>
-            {deleteError && <div className="error-box">{deleteError}</div>}
+            {deleteError && <div className="error-box" role="alert">{deleteError}</div>}
             <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setConfirmDelete(null)}>
                 Keep it
