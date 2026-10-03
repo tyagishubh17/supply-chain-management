@@ -32,6 +32,8 @@ pool = ConnectionPool(
     min_size=1,
     max_size=int(os.getenv("DB_POOL_MAX", "5")),
     # prepare_threshold=None keeps psycopg from caching prepared statements.
+    # Disable prepared-statement caching because schema reloads can invalidate
+    # cached query plans when PostgreSQL types are recreated.
     # Without it, the first query after the schema is reloaded fails with
     # "cached plan must not change result type" -- schema.sql recreates the
     # order_status type, so the cached plan's result type no longer exists --
@@ -47,7 +49,8 @@ pool = ConnectionPool(
     open=False,
 )
 
-
+# Centralise connection and cursor handling so callers do not repeat
+# transaction-management boilerplate.
 @contextmanager
 def get_cursor():
     """Yield a dict-returning cursor inside a transaction.
@@ -65,12 +68,18 @@ def fetch_all(
     sql: str,
     params: tuple = (),
 ) -> list[dict]:
+    """Execute a query and return all rows as dictionaries."""
     with get_cursor() as cur:
         cur.execute(sql, params)
         return cur.fetchall()
 
 
-def fetch_one(sql: str, params: tuple = ()) -> dict | None:
+
+def fetch_one(
+    sql: str,
+    params: tuple = (),
+) -> dict | None:
+    """Execute a query and return one row, or None when no row exists."""
     with get_cursor() as cur:
         cur.execute(sql, params)
         return cur.fetchone()
@@ -98,13 +107,22 @@ def call_function(
                 if cur.description
                 else None
             )
+        
     except psycopg.errors.RaiseException as exc:
-        raise HTTPException(status_code=400, detail=_message(exc)) from exc
+        raise HTTPException(
+            status_code=400,
+            detail=_message(exc),
+        ) from exc
     except psycopg.errors.IntegrityError as exc:
-        raise HTTPException(status_code=400, detail=_message(exc)) from exc
+        raise HTTPException(
+            status_code=400,
+            detail=_message(exc),
+        ) from exc
 
 
 def _message(exc: psycopg.Error) -> str:
+    """Extract a concise database error message for API responses."""
     return (
-        exc.diag.message_primary or str(exc)
+        exc.diag.message_primary
+        or str(exc)
     ).strip()
