@@ -21,6 +21,9 @@ export default function VendorProducts() {
   const [editingId, setEditingId] = useState(null);
   const [editPrice, setEditPrice] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
+  // Lives inside the dialog: a message written to the page-level error box
+  // renders behind the backdrop and reads as part of the dimmed page.
+  const [deleteError, setDeleteError] = useState("");
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -62,9 +65,15 @@ export default function VendorProducts() {
   async function handleSavePrice(productId) {
     setError("");
     setNotice("");
+    // An emptied field is a mistake, not a price of zero: sent as "" it comes
+    // back from Pydantic as "price: Input should be a valid decimal".
+    if (editPrice.trim() === "") {
+      setError("Enter a new price before saving.");
+      return;
+    }
     setBusy(true);
     try {
-      await api.updatePrice(productId, editPrice);
+      await api.updatePrice(productId, Number(editPrice));
       setEditingId(null);
       setNotice("Price updated.");
       await load();
@@ -78,6 +87,7 @@ export default function VendorProducts() {
   async function handleDelete(product) {
     setError("");
     setNotice("");
+    setDeleteError("");
     setBusy(true);
     try {
       const res = await api.deleteProduct(product.product_id);
@@ -87,7 +97,7 @@ export default function VendorProducts() {
       setNotice(res.message);
       await load();
     } catch (err) {
-      setError(err.message);
+      setDeleteError(err.message);
     } finally {
       setBusy(false);
     }
@@ -225,7 +235,10 @@ export default function VendorProducts() {
                             </button>
                             <button
                               className="btn btn-danger btn-sm"
-                              onClick={() => setConfirmDelete(p)}
+                              onClick={() => {
+                                setConfirmDelete(p);
+                                setDeleteError("");
+                              }}
                             >
                               Delete
                             </button>
@@ -250,6 +263,7 @@ export default function VendorProducts() {
               If it appears in existing orders it is archived instead of deleted,
               so the order history is preserved.
             </p>
+            {deleteError && <div className="error-box">{deleteError}</div>}
             <div className="modal-actions">
               <button className="btn btn-ghost" onClick={() => setConfirmDelete(null)}>
                 Keep it
