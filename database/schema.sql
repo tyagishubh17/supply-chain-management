@@ -44,7 +44,10 @@ DROP FUNCTION IF EXISTS trg_check_email_unique_across_roles()           CASCADE;
 -- =========================================================
 -- Build (psql only -- see the Supabase note above)
 -- =========================================================
-\i tables.sql
-\i constraints.sql
-\i functions.sql
-\i views.sql
+-- \ir, not \i: \i resolves against the current directory, so the command
+-- documented above only worked from inside this folder. \ir resolves
+-- against the directory holding this script, so it works from anywhere.
+\ir tables.sql
+\ir constraints.sql
+\ir functions.sql
+\ir views.sql
