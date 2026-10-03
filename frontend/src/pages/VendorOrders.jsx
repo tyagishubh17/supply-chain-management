@@ -34,6 +34,13 @@ export default function VendorOrders() {
     load();
   }, [load]);
 
+  // The customer places orders while this tab may be sitting open, so the
+  // queue is refetched whenever the vendor comes back to the tab.
+  useEffect(() => {
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [load]);
+
   // Escape closes the dialog, the same as clicking the backdrop.
   useEffect(() => {
     if (!cancelling) return;
@@ -111,6 +118,9 @@ export default function VendorOrders() {
             <table>
               <thead>
                 <tr>
+                  {/* The order number identifies the row the vendor decides;
+                      two orders of the same product look identical without it. */}
+                  <th className="num">Order</th>
                   <th>Customer</th>
                   <th>Product</th>
                   <th className="num">Qty</th>
@@ -123,6 +133,7 @@ export default function VendorOrders() {
               <tbody>
                 {orders.map((o) => (
                   <tr key={o.order_id}>
+                    <td className="num">{o.order_id}</td>
                     <td className="name">{o.customer_name}</td>
                     <td>{o.product_name}</td>
                     <td className="num">{o.quantity}</td>
