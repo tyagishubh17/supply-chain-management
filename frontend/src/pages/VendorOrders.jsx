@@ -190,7 +190,13 @@ export default function VendorOrders() {
 
       {cancelling && (
         <div className="modal-backdrop" onClick={() => setCancelling(null)}>
-          <div className="modal" role="dialog" aria-modal="true" aria-label={`Cancel order #${cancelling.order_id}`} onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Cancel order #${cancelling.order_id}`}
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2>Cancel order #{cancelling.order_id}</h2>
             <p style={{ marginTop: 0, fontSize: "0.9rem", color: "var(--text-muted)" }}>
               {cancelling.quantity} × {cancelling.product_name} for {cancelling.customer_name}.
