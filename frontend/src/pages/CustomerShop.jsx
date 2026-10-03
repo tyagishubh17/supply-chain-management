@@ -19,6 +19,8 @@ export default function CustomerShop() {
 
   const [selected, setSelected] = useState(null);
   const [qty, setQty] = useState("1");
+  const [shippingAddress, setShippingAddress] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
   const [orderError, setOrderError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -42,6 +44,8 @@ export default function CustomerShop() {
   function openProduct(product) {
     setSelected(product);
     setQty("1");
+    setShippingAddress("");
+    setContactPhone("");
     setOrderError("");
   }
 
@@ -73,7 +77,12 @@ export default function CustomerShop() {
 
     setBusy(true);
     try {
-      const res = await api.placeOrder(selected.product_id, wanted);
+      const res = await api.placeOrder(
+        selected.product_id,
+        wanted,
+        shippingAddress.trim(),
+        contactPhone.trim(),
+      );
       setNotice(
         `Order #${res.order_id} placed for ${wanted} × ${selected.product_name}. ` +
           `It is pending until ${selected.supplier_name} accepts it.`,
@@ -195,6 +204,28 @@ export default function CustomerShop() {
                   onChange={(e) => setQty(e.target.value)}
                   required
                   autoFocus
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="shippingAddress">Delivery address (optional)</label>
+                <input
+                  id="shippingAddress"
+                  type="text"
+                  value={shippingAddress}
+                  onChange={(e) => setShippingAddress(e.target.value)}
+                  placeholder="e.g. 102 Market St, New Delhi"
+                  maxLength={300}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="contactPhone">Contact phone (optional)</label>
+                <input
+                  id="contactPhone"
+                  type="tel"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  placeholder="e.g. +91 98765 43210"
+                  maxLength={25}
                 />
               </div>
               <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>

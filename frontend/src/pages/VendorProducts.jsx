@@ -21,6 +21,9 @@ export default function VendorProducts() {
   const [editingId, setEditingId] = useState(null);
   const [editPrice, setEditPrice] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [restockingProduct, setRestockingProduct] = useState(null);
+  const [restockQty, setRestockQty] = useState("");
+  const [restockError, setRestockError] = useState("");
   // Lives inside the dialog: a message written to the page-level error box
   // renders behind the backdrop and reads as part of the dimmed page.
   const [deleteError, setDeleteError] = useState("");
@@ -48,6 +51,15 @@ export default function VendorProducts() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [confirmDelete]);
+
+  useEffect(() => {
+    if (!restockingProduct) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setRestockingProduct(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [restockingProduct]);
 
   async function handleAdd(e) {
     e.preventDefault();
@@ -108,6 +120,30 @@ export default function VendorProducts() {
       await load();
     } catch (err) {
       setDeleteError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRestock(e) {
+    e.preventDefault();
+    setError("");
+    setNotice("");
+    setRestockError("");
+    const qty = Number(restockQty);
+    if (!Number.isInteger(qty) || qty <= 0) {
+      setRestockError("Enter a valid restock quantity (at least 1).");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await api.restockProduct(restockingProduct.product_id, qty);
+      setNotice(`Restocked "${res.product_name}". New total stock: ${res.quantity}.`);
+      setRestockingProduct(null);
+      setRestockQty("");
+      await load();
+    } catch (err) {
+      setRestockError(err.message);
     } finally {
       setBusy(false);
     }
@@ -235,6 +271,16 @@ export default function VendorProducts() {
                         ) : (
                           <>
                             <button
+                              className="btn btn-sm"
+                              onClick={() => {
+                                setRestockingProduct(p);
+                                setRestockQty("");
+                                setRestockError("");
+                              }}
+                            >
+                              Restock
+                            </button>
+                            <button
                               className="btn btn-ghost btn-sm"
                               onClick={() => {
                                 setEditingId(p.product_id);
@@ -263,6 +309,48 @@ export default function VendorProducts() {
           </div>
         )}
       </div>
+
+      {restockingProduct && (
+        <div className="modal-backdrop" onClick={() => setRestockingProduct(null)}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Restock product"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2>Restock product</h2>
+            <p style={{ marginTop: 0, fontSize: "0.9rem", color: "var(--text-muted)" }}>
+              Add inventory for <strong>{restockingProduct.product_name}</strong>. Currently in stock: <strong>{restockingProduct.quantity}</strong> units.
+            </p>
+            {restockError && <div className="error-box" role="alert">{restockError}</div>}
+            <form onSubmit={handleRestock}>
+              <div className="field">
+                <label htmlFor="restockQty">Units to add</label>
+                <input
+                  id="restockQty"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={restockQty}
+                  onChange={(e) => setRestockQty(e.target.value)}
+                  placeholder="e.g. 50"
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-ghost" onClick={() => setRestockingProduct(null)}>
+                  Cancel
+                </button>
+                <button className="btn" disabled={busy}>
+                  {busy ? "Restocking…" : "Add stock"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {confirmDelete && (
         <div className="modal-backdrop" onClick={() => setConfirmDelete(null)}>
