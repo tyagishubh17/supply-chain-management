@@ -19,7 +19,8 @@ router = APIRouter(prefix="/orders", tags=["orders"])
 # vw_order_details already joins orders -> customers, products, vendors.
 _ORDER_COLUMNS = """
     order_id, status, quantity, unit_price, line_total, cancellation_reason,
-    ordered_at, decided_at, customer_name, product_id, product_name, supplier_name
+    ordered_at, decided_at, customer_name, product_id, product_name, supplier_name,
+    shipping_address, contact_phone, current_stock
 """
 
 
@@ -36,10 +37,22 @@ def place_order(body: OrderCreate, customer: dict = Depends(require_customer)):
     product quantity is deliberately left untouched here.
     """
     row = call_function(
-        "SELECT place_order(%s, %s, %s) AS order_id",
-        (customer["id"], body.product_id, body.quantity),
+        "SELECT place_order(%s, %s, %s, %s, %s) AS order_id",
+        (customer["id"], body.product_id, body.quantity, body.shipping_address, body.contact_phone),
     )
-    return {"order_id": row["order_id"], "status": "PENDING"}
+    return {
+        "order_id": row["order_id"],
+        "status": "PENDING",
+        "shipping_address": body.shipping_address,
+        "contact_phone": body.contact_phone,
+    }
+
+
+@router.post("/{order_id}/cancel-my-order")
+def customer_cancel_order(order_id: int, customer: dict = Depends(require_customer)):
+    """Allows a customer to cancel their own PENDING order."""
+    call_function("SELECT customer_cancel_order(%s, %s)", (order_id, customer["id"]))
+    return {"order_id": order_id, "status": "CANCELLED", "cancellation_reason": "Cancelled by customer"}
 
 
 @router.get("/mine", response_model=list[Order])

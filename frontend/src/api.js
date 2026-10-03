@@ -65,6 +65,11 @@ export const api = {
   addProduct: (body) => request("/products/mine", { method: "POST", body }),
   updatePrice: (productId, price) =>
     request(`/products/mine/${productId}/price`, { method: "PATCH", body: { price } }),
+  restockProduct: (productId, addedQuantity) =>
+    request(`/products/mine/${productId}/stock`, {
+      method: "PATCH",
+      body: { added_quantity: addedQuantity },
+    }),
   deleteProduct: (productId) =>
     request(`/products/mine/${productId}`, { method: "DELETE" }),
 
@@ -80,7 +85,16 @@ export const api = {
   catalogue: (search) =>
     request(`/products${search ? `?search=${encodeURIComponent(search)}` : ""}`),
   productDetail: (productId) => request(`/products/${productId}`),
-  placeOrder: (productId, quantity) =>
-    request("/orders", { method: "POST", body: { product_id: productId, quantity } }),
+  placeOrder: (productId, quantity, shippingAddress, contactPhone) =>
+    request("/orders", {
+      method: "POST",
+      body: {
+        product_id: productId,
+        quantity,
+        shipping_address: shippingAddress || undefined,
+        contact_phone: contactPhone || undefined,
+      },
+    }),
   myOrders: () => request("/orders/mine"),
+  cancelMyOrder: (orderId) => request(`/orders/${orderId}/cancel-my-order`, { method: "POST" }),
 };
