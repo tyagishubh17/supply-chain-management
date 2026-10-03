@@ -168,7 +168,7 @@ psql "postgresql://postgres:postgres@127.0.0.1:5432/supply_chain_db" -f database
 ```
 
 The seed data creates three vendors, three customers, eight products and
-twelve orders spanning all four statuses, so the dashboards and charts have
+thirteen orders spanning all four statuses, so the dashboards and charts have
 something real to show. Every demo account uses the password
 `password123`:
 
