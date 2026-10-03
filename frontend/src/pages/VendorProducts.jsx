@@ -266,7 +266,13 @@ export default function VendorProducts() {
 
       {confirmDelete && (
         <div className="modal-backdrop" onClick={() => setConfirmDelete(null)}>
-          <div className="modal" role="dialog" aria-modal="true" aria-label="Delete product" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Delete product"
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2>Delete product</h2>
             <p style={{ marginTop: 0, fontSize: "0.9rem" }}>
               Remove <strong>{confirmDelete.product_name}</strong> from your catalogue?
