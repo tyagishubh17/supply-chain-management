@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 // Two roles, two navigations. A vendor is never shown a customer link and
@@ -19,6 +19,7 @@ const NAV_BY_ROLE = {
 export default function Layout() {
   const { session, logout } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const items = NAV_BY_ROLE[session?.role] ?? [];
 
   function handleLogout() {
@@ -40,7 +41,9 @@ export default function Layout() {
               key={item.to}
               to={item.to}
               className={({ isActive }) => (isActive ? "active" : "")}
-              aria-current={({ isActive }) => (isActive ? "page" : undefined)}
+              // aria-current needs a real attribute value, so it cannot be
+              // derived from the className callback the way active styling is.
+              aria-current={pathname === item.to ? "page" : undefined}
             >
               {item.label}
             </NavLink>
