@@ -156,7 +156,9 @@ export default function VendorProducts() {
         {products === null ? (
           <div className="loading">Loading…</div>
         ) : products.length === 0 ? (
-          <div className="empty-state">No products yet. Add your first one above.</div>
+          error ? null : (
+            <div className="empty-state">No products yet. Add your first one above.</div>
+          )
         ) : (
           <div className="table-wrap">
             <table>

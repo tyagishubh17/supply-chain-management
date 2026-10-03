@@ -91,7 +91,7 @@ export default function VendorOrders() {
         {orders === null ? (
           <div className="loading">Loading…</div>
         ) : orders.length === 0 ? (
-          <div className="empty-state">No orders yet.</div>
+          error ? null : <div className="empty-state">No orders yet.</div>
         ) : (
           <div className="table-wrap">
             <table>

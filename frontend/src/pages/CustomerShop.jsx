@@ -23,6 +23,8 @@ export default function CustomerShop() {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async (term) => {
+    // Cleared up front so a search that recovers drops the previous failure.
+    setError("");
     try {
       setProducts(await api.catalogue(term));
     } catch (err) {
@@ -99,11 +101,13 @@ export default function CustomerShop() {
         {products === null ? (
           <div className="loading">Loading…</div>
         ) : products.length === 0 ? (
-          <div className="empty-state">
-            {search.trim()
-              ? `No products match "${search.trim()}".`
-              : "No products are available right now."}
-          </div>
+          error ? null : (
+            <div className="empty-state">
+              {search.trim()
+                ? `No products match "${search.trim()}".`
+                : "No products are available right now."}
+            </div>
+          )
         ) : (
           <div className="table-wrap">
             <table>
