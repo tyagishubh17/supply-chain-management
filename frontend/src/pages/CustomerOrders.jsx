@@ -31,9 +31,13 @@ export default function CustomerOrders() {
         {orders === null ? (
           <div className="loading">Loading…</div>
         ) : orders.length === 0 ? (
-          <div className="empty-state">
-            You have not placed any orders yet.
-          </div>
+          // A failed fetch leaves the list empty, so the empty state is
+          // suppressed rather than claiming there are no orders.
+          error ? null : (
+            <div className="empty-state">
+              You have not placed any orders yet.
+            </div>
+          )
         ) : (
           <div className="table-wrap">
             <table>
