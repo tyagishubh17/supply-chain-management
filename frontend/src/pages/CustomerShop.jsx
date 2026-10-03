@@ -152,7 +152,13 @@ export default function CustomerShop() {
 
       {selected && (
         <div className="modal-backdrop" onClick={() => setSelected(null)}>
-          <div className="modal" role="dialog" aria-modal="true" aria-label={`Order ${selected.product_name}`} onClick={(e) => e.stopPropagation()}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Order ${selected.product_name}`}
+            onClick={(e) => e.stopPropagation()}
+          >
             <h2>{selected.product_name}</h2>
 
             <dl className="detail-list">
