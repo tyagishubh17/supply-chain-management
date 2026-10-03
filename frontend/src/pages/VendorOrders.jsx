@@ -17,6 +17,9 @@ export default function VendorOrders() {
   // The order being cancelled, plus the typed reason.
   const [cancelling, setCancelling] = useState(null);
   const [reason, setReason] = useState("");
+  // Rendered inside the dialog: the page-level error box sits behind the
+  // modal backdrop, so the vendor would never see the refusal.
+  const [cancelError, setCancelError] = useState("");
 
   const load = useCallback(async () => {
     try {
@@ -57,6 +60,7 @@ export default function VendorOrders() {
     e.preventDefault();
     setError("");
     setNotice("");
+    setCancelError("");
     setBusyId(cancelling.order_id);
     try {
       await api.cancelOrder(cancelling.order_id, reason.trim());
@@ -65,7 +69,7 @@ export default function VendorOrders() {
       setReason("");
       await load();
     } catch (err) {
-      setError(err.message);
+      setCancelError(err.message);
     } finally {
       setBusyId(null);
     }
@@ -158,6 +162,7 @@ export default function VendorOrders() {
                             onClick={() => {
                               setCancelling(o);
                               setReason("");
+                              setCancelError("");
                             }}
                           >
                             Cancel
@@ -182,6 +187,7 @@ export default function VendorOrders() {
               {cancelling.status === "ACCEPTED" &&
                 " This order was already accepted, so the units return to your stock."}
             </p>
+            {cancelError && <div className="error-box">{cancelError}</div>}
             <form onSubmit={submitCancel}>
               <div className="field">
                 <label htmlFor="reason">Reason for cancellation (required)</label>
