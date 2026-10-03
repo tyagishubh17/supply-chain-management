@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "../api";
 import { money, orderDate, orderTime } from "../format";
 
@@ -11,12 +11,30 @@ export default function CustomerOrders() {
   const [orders, setOrders] = useState(null);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    api.myOrders().then(setOrders).catch((err) => {
-      setError(err.message);
-      setOrders([]);
-    });
+  const load = useCallback(() => {
+    api.myOrders()
+      .then((rows) => {
+        setOrders(rows);
+        setError("");
+      })
+      .catch((err) => {
+        setError(err.message);
+        setOrders([]);
+      });
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  // The vendor decides these orders, possibly while this tab sits open in
+  // another window. Refetching when the tab regains focus means the status
+  // on screen is the status in the database, not whatever it was when the
+  // page was first rendered.
+  useEffect(() => {
+    window.addEventListener("focus", load);
+    return () => window.removeEventListener("focus", load);
+  }, [load]);
 
   return (
     <>
@@ -43,6 +61,9 @@ export default function CustomerOrders() {
             <table>
               <thead>
                 <tr>
+                  {/* The order number is what the confirmation message
+                      quotes, so it has to be on the row it refers to. */}
+                  <th className="num">Order</th>
                   <th>Product</th>
                   <th>Supplier</th>
                   <th className="num">Qty</th>
@@ -54,6 +75,7 @@ export default function CustomerOrders() {
               <tbody>
                 {orders.map((o) => (
                   <tr key={o.order_id}>
+                    <td className="num">{o.order_id}</td>
                     <td className="name">{o.product_name}</td>
                     <td>{o.supplier_name}</td>
                     <td className="num">{o.quantity}</td>
