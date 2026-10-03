@@ -47,7 +47,7 @@ export default function Register() {
           </button>
         </div>
 
-        {error && <div className="error-box">{error}</div>}
+        {error && <div className="error-box" role="alert">{error}</div>}
 
         <form onSubmit={handleSubmit}>
           <div className="field">

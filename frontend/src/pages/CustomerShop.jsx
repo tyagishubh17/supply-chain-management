@@ -45,6 +45,16 @@ export default function CustomerShop() {
     setOrderError("");
   }
 
+  // Escape closes the dialog, the same as clicking the backdrop.
+  useEffect(() => {
+    if (!selected) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setSelected(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selected]);
+
   async function submitOrder(e) {
     e.preventDefault();
     setOrderError("");
@@ -84,8 +94,8 @@ export default function CustomerShop() {
         <p>Available products from all suppliers. Click a product to see its supplier and order.</p>
       </div>
 
-      {error && <div className="error-box">{error}</div>}
-      {notice && <div className="notice-box">{notice}</div>}
+      {error && <div className="error-box" role="alert">{error}</div>}
+      {notice && <div className="notice-box" role="status">{notice}</div>}
 
       <div className="search-bar">
         <input
@@ -99,7 +109,7 @@ export default function CustomerShop() {
 
       <div className="panel">
         {products === null ? (
-          <div className="loading">Loading…</div>
+          <div className="loading" role="status">Loading…</div>
         ) : products.length === 0 ? (
           error ? null : (
             <div className="empty-state">
@@ -142,7 +152,7 @@ export default function CustomerShop() {
 
       {selected && (
         <div className="modal-backdrop" onClick={() => setSelected(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal" role="dialog" aria-modal="true" aria-label={`Order ${selected.product_name}`} onClick={(e) => e.stopPropagation()}>
             <h2>{selected.product_name}</h2>
 
             <dl className="detail-list">
@@ -161,7 +171,7 @@ export default function CustomerShop() {
             </dl>
 
             {orderError && (
-              <div className="error-box" style={{ marginTop: 14 }}>
+              <div className="error-box" role="alert" style={{ marginTop: 14 }}>
                 {orderError}
               </div>
             )}

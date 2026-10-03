@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import { api } from "../api";
 import ChartTooltip from "../components/ChartTooltip";
-import { CHART, formatCurrency, formatDayLabel } from "../chartTheme";
+import { CHART, formatDayLabel } from "../chartTheme";
 import { money } from "../format";
 
 /**
@@ -28,8 +28,8 @@ export default function VendorSales() {
     api.salesSummary().then(setData).catch((err) => setError(err.message));
   }, []);
 
-  if (error) return <div className="error-box">{error}</div>;
-  if (!data) return <div className="loading">Loading…</div>;
+  if (error) return <div className="error-box" role="alert">{error}</div>;
+  if (!data) return <div className="loading" role="status">Loading…</div>;
 
   // Only products that have actually sold belong in a "sales by product"
   // chart; the rest would be a row of empty bars.
@@ -86,7 +86,7 @@ export default function VendorSales() {
                   tickFormatter={(v) => `₹${(v / 1000).toLocaleString("en-IN")}k`}
                 />
                 <Tooltip
-                  content={<ChartTooltip formatter={formatCurrency} />}
+                  content={<ChartTooltip formatter={money} />}
                   cursor={{ fill: "rgba(47,107,70,0.06)" }}
                 />
                 <Bar dataKey="revenue" name="Revenue" fill={CHART.green} radius={[3, 3, 0, 0]} />

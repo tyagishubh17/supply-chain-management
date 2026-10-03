@@ -25,11 +25,11 @@ export default function CustomerOrders() {
         <p>Every order you have placed, newest first.</p>
       </div>
 
-      {error && <div className="error-box">{error}</div>}
+      {error && <div className="error-box" role="alert">{error}</div>}
 
       <div className="panel">
         {orders === null ? (
-          <div className="loading">Loading…</div>
+          <div className="loading" role="status">Loading…</div>
         ) : orders.length === 0 ? (
           // A failed fetch leaves the list empty, so the empty state is
           // suppressed rather than claiming there are no orders.
