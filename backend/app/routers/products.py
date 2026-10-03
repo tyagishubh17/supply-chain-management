@@ -13,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.auth import require_customer, require_vendor
 from app.database import call_function, fetch_all, fetch_one, get_cursor
-from app.schemas import CatalogueProduct, PriceUpdate, ProductCreate, VendorProduct
+from app.schemas import CatalogueProduct, PriceUpdate, ProductCreate, StockRestock, VendorProduct
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -66,9 +66,23 @@ def change_price(product_id: int, body: PriceUpdate, vendor: dict = Depends(requ
     return fetch_one(
         """
         SELECT product_id, product_name, price, quantity, created_at, updated_at
-          FROM products WHERE product_id = %s
+          FROM products WHERE product_id = %s AND vendor_id = %s
         """,
-        (product_id,),
+        (product_id, vendor["id"]),
+    )
+
+
+@router.patch("/mine/{product_id}/stock", response_model=VendorProduct)
+def restock_product(product_id: int, body: StockRestock, vendor: dict = Depends(require_vendor)):
+    """Allows vendor to replenish stock for an active product."""
+    call_function("SELECT restock_product(%s, %s, %s)",
+                  (product_id, vendor["id"], body.added_quantity))
+    return fetch_one(
+        """
+        SELECT product_id, product_name, price, quantity, created_at, updated_at
+          FROM products WHERE product_id = %s AND vendor_id = %s
+        """,
+        (product_id, vendor["id"]),
     )
 
 

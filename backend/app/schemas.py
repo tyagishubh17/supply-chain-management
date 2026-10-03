@@ -54,6 +54,10 @@ class PriceUpdate(BaseModel):
     price: Decimal = Field(ge=0, max_digits=10, decimal_places=2)
 
 
+class StockRestock(BaseModel):
+    added_quantity: int = Field(gt=0)
+
+
 class VendorProduct(BaseModel):
     product_id: int
     product_name: str
@@ -81,6 +85,8 @@ class CatalogueProduct(BaseModel):
 class OrderCreate(BaseModel):
     product_id: int
     quantity: int = Field(gt=0)
+    shipping_address: Optional[str] = Field(None, max_length=500)
+    contact_phone: Optional[str] = Field(None, max_length=25)
 
 
 class CancelRequest(BaseModel):
@@ -100,6 +106,9 @@ class Order(BaseModel):
     product_id: int
     product_name: str
     supplier_name: str
+    shipping_address: Optional[str] = None
+    contact_phone: Optional[str] = None
+    current_stock: Optional[int] = None
 
 
 # ---------------------------------------------------------

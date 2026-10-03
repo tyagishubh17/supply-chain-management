@@ -316,3 +316,82 @@ BEGIN
     RETURN 'archived';
 END;
 $$ LANGUAGE plpgsql;
+
+
+-- ---------------------------------------------------------
+-- restock_product : vendor replenishes stock for an active product
+-- ---------------------------------------------------------
+CREATE OR REPLACE FUNCTION restock_product(
+    p_product_id     INTEGER,
+    p_vendor_id      INTEGER,
+    p_added_quantity INTEGER
+) RETURNS INTEGER AS $$
+DECLARE
+    v_owner_id  INTEGER;
+    v_new_stock INTEGER;
+BEGIN
+    IF p_added_quantity IS NULL OR p_added_quantity <= 0 THEN
+        RAISE EXCEPTION 'Restock quantity must be at least 1.';
+    END IF;
+
+    SELECT vendor_id
+      INTO v_owner_id
+      FROM products
+     WHERE product_id = p_product_id
+       AND is_active
+       FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Product % not found in your catalogue.', p_product_id;
+    END IF;
+
+    IF v_owner_id <> p_vendor_id THEN
+        RAISE EXCEPTION 'You can only restock your own products.';
+    END IF;
+
+    UPDATE products
+       SET quantity = quantity + p_added_quantity
+     WHERE product_id = p_product_id
+     RETURNING quantity INTO v_new_stock;
+
+    RETURN v_new_stock;
+END;
+$$ LANGUAGE plpgsql;
+
+
+-- ---------------------------------------------------------
+-- customer_cancel_order : customer cancels their own PENDING order
+-- ---------------------------------------------------------
+CREATE OR REPLACE FUNCTION customer_cancel_order(
+    p_order_id    INTEGER,
+    p_customer_id INTEGER
+) RETURNS VOID AS $$
+DECLARE
+    v_customer_id INTEGER;
+    v_status      order_status;
+BEGIN
+    SELECT customer_id, status
+      INTO v_customer_id, v_status
+      FROM orders
+     WHERE order_id = p_order_id
+       FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Order % not found.', p_order_id;
+    END IF;
+
+    IF v_customer_id <> p_customer_id THEN
+        RAISE EXCEPTION 'You can only cancel your own orders.';
+    END IF;
+
+    IF v_status <> 'PENDING' THEN
+        RAISE EXCEPTION 'Only pending orders can be cancelled by customer (current status: %).', v_status;
+    END IF;
+
+    UPDATE orders
+       SET status = 'CANCELLED',
+           cancellation_reason = 'Cancelled by customer',
+           decided_at = now()
+     WHERE order_id = p_order_id;
+END;
+$$ LANGUAGE plpgsql;

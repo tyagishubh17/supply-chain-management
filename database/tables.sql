@@ -71,6 +71,8 @@ CREATE TABLE orders (
     unit_price          NUMERIC(10, 2) NOT NULL,
     status              order_status    NOT NULL DEFAULT 'PENDING',
     cancellation_reason TEXT,
+    shipping_address    TEXT,
+    contact_phone       VARCHAR(25),
     ordered_at          TIMESTAMPTZ    NOT NULL DEFAULT now(),
     decided_at          TIMESTAMPTZ
 );

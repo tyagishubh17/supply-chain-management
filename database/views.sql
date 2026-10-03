@@ -48,7 +48,10 @@ SELECT o.order_id,
        p.product_name,
        p.is_active    AS product_is_active,
        v.vendor_id,
-       v.company_name AS supplier_name
+       v.company_name AS supplier_name,
+       o.shipping_address,
+       o.contact_phone,
+       p.quantity     AS current_stock
   FROM orders    o
   JOIN customers c ON c.customer_id = o.customer_id
   JOIN products  p ON p.product_id  = o.product_id

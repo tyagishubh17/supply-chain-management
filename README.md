@@ -65,8 +65,9 @@ recommendations — is deliberately out of scope.
 | Add a product (name, price, quantity) | My products |
 | View own products, with created/updated dates | My products |
 | Change the price of an own product | My products → Edit price |
+| Restock inventory for an own product | My products → Restock |
 | Delete an own product, preserving order history | My products → Delete |
-| See incoming orders for own products, with customer, product, quantity, date, time and status | Incoming orders |
+| See incoming orders for own products, with customer, shipping address, product, quantity, date, time and status | Incoming orders |
 | Accept an order — the only action that reduces stock | Incoming orders → Accept |
 | Reject an order — stock unchanged | Incoming orders → Reject |
 | Cancel an order with a mandatory stored reason | Incoming orders → Cancel |
@@ -83,9 +84,10 @@ placed against them.
 | Browse available products from all vendors | Browse products |
 | Search products by name | Browse products → search box |
 | View a product's details and its supplier | Browse products → View & order |
-| Place an order for a valid quantity | Product dialog → Place order |
-| Order history with product, supplier, quantity, price, date, time and status | My orders |
-| See the vendor's cancellation reason | My orders |
+| Place an order with shipping address and phone | Product dialog → Place order |
+| Order history with product, supplier, quantity, price, shipping details, date, time and status | My orders |
+| Cancel own pending order | My orders → Cancel order |
+| See the cancellation reason | My orders |
 
 A customer can only see their own orders.
 
@@ -277,6 +279,8 @@ stock, and is only ever changed by the order-workflow functions.
 | `product_id` | `INTEGER` | `NOT NULL`, **FK → `products(product_id)`** `ON DELETE RESTRICT` |
 | `quantity` | `INTEGER` | `NOT NULL`, `CHECK (quantity > 0)` |
 | `unit_price` | `NUMERIC(10,2)` | `NOT NULL`, `CHECK (unit_price >= 0)`. Price **at order time** |
+| `shipping_address` | `TEXT` | Optional delivery address provided at order placement |
+| `contact_phone` | `VARCHAR(25)` | Optional contact phone number for delivery coordination |
 | `status` | `order_status` | `NOT NULL DEFAULT 'PENDING'`. Enum: `PENDING`/`ACCEPTED`/`REJECTED`/`CANCELLED` |
 | `cancellation_reason` | `TEXT` | Required when `CANCELLED`, must be `NULL` otherwise |
 | `ordered_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT now()`. Gives both order date and time |
@@ -378,6 +382,7 @@ products  ( product_id, vendor_id, product_name, price, quantity,
 orders    ( order_id, customer_id, product_id, quantity, unit_price,
               └─ PK     └─ FK →      └─ FK →
                         customers     products
+            shipping_address, contact_phone,
             status, cancellation_reason, ordered_at, decided_at )
 ```
 
@@ -724,11 +729,13 @@ authorisation is enforced by the database rather than only by the API.
 
 | Function | What it does |
 |---|---|
-| `place_order(customer_id, product_id, quantity) → order_id` | Locks the product row, refuses an out-of-stock, archived or over-quantity request with the message `Only N units are currently available.`, snapshots the price, inserts a `PENDING` order. **Does not touch stock.** |
+| `place_order(customer_id, product_id, quantity, shipping_address, contact_phone) → order_id` | Locks the product row, refuses an out-of-stock, archived or over-quantity request with the message `Only N units are currently available.`, snapshots the price, records shipping address and contact phone, inserts a `PENDING` order. **Does not touch stock.** |
 | `accept_order(order_id, vendor_id)` | Verifies ownership, verifies the order is still `PENDING`, re-checks stock, decrements `products.quantity`, sets `ACCEPTED` — atomically. |
 | `reject_order(order_id, vendor_id)` | Verifies ownership and pending status, sets `REJECTED`. Stock untouched. |
 | `cancel_order(order_id, vendor_id, reason)` | Requires a non-blank reason, allows `PENDING` or `ACCEPTED`, returns the units to stock if they had been deducted, stores the reason. |
+| `customer_cancel_order(order_id, customer_id)` | Allows a customer to cancel their own `PENDING` order, storing `'Cancelled by customer'`. Stock untouched because pending orders never consumed stock. |
 | `update_product_price(product_id, vendor_id, price)` | Repricing with the ownership test in the `WHERE` clause. |
+| `restock_product(product_id, vendor_id, added_quantity)` | Restocks an existing product with `added_quantity > 0`, verifying vendor ownership. |
 | `delete_product(product_id, vendor_id) → 'deleted' \| 'archived'` | Hard-deletes a never-ordered product; soft-deletes one with order history. |
 
 `accept_order` and `place_order` use `SELECT ... FOR UPDATE` on the product
@@ -741,7 +748,7 @@ against the same last units. Locks are always taken in the order
 | View | Purpose |
 |---|---|
 | `vw_available_products` | The customer catalogue. Joins `products → vendors` and filters to `is_active AND quantity > 0`, so nothing unorderable is ever listed. |
-| `vw_order_details` | One fully-resolved row per order, joining all four tables and computing `line_total`. Both dashboards read it, filtered by `vendor_id` or `customer_id`. |
+| `vw_order_details` | One fully-resolved row per order, joining all four tables, exposing `shipping_address`, `contact_phone`, `current_stock`, and computing `line_total`. Both dashboards read it, filtered by `vendor_id` or `customer_id`. |
 | `vw_vendor_product_sales` | Aggregated sales per product, counting `ACCEPTED` orders only, with a `LEFT JOIN` so unsold products stay at zero. |
 
 ### Triggers
@@ -888,9 +895,9 @@ before the demo, and capture the screenshots listed below while doing so.
 
 | Member | Area | Contribution |
 |---|---|---|
-| **Member 1** | Database design | ER model and relational schema, normalisation to 3NF, `tables.sql` and `constraints.sql`, the referential-integrity strategy for product deletion, indexes |
-| **Member 2** | SQL logic | The order-workflow functions in `functions.sql` (place/accept/reject/cancel), row locking and transaction handling, the three views, `queries.sql`, `seed.sql` |
-| **Member 3** | Backend | FastAPI routers, JWT authentication and the role dependencies, mapping database errors to API responses, environment-based configuration, the API test suite |
-| **Member 4** | Frontend | React pages for both roles, the cream-and-green design system, product search, the order and cancellation dialogs, the Recharts sales views, responsive layout |
+| **Shubh Tyagi** | SQL logic | The order-workflow functions in `functions.sql` (place/accept/reject/cancel), row locking and transaction handling, the three views, `queries.sql`, `seed.sql` |
+| **Imran Farhat** | Database design | ER model and relational schema, normalisation to 3NF, `tables.sql` and `constraints.sql`, the referential-integrity strategy for product deletion, indexes |
+| **Mayank Kushwaha** | Backend | FastAPI routers, JWT authentication and the role dependencies, mapping database errors to API responses, environment-based configuration, the API test suite |
+| **Sakshee Kumari** | Frontend | React pages for both roles, the cream-and-green design system, product search, the order and cancellation dialogs, the Recharts sales views, responsive layout |
 
-Shared: requirement analysis, end-to-end testing, and this documentation.
+

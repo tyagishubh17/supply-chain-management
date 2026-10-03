@@ -69,6 +69,8 @@ CREATE TABLE orders (
     unit_price          NUMERIC(10, 2) NOT NULL,
     status              order_status   NOT NULL DEFAULT 'PENDING',
     cancellation_reason TEXT,
+    shipping_address    TEXT,
+    contact_phone       VARCHAR(25),
     ordered_at          TIMESTAMPTZ    NOT NULL DEFAULT now(),
     decided_at          TIMESTAMPTZ
 );
@@ -175,9 +177,11 @@ CREATE TRIGGER trg_products_updated_at
     FOR EACH ROW EXECUTE FUNCTION trg_products_set_updated_at();
 
 CREATE OR REPLACE FUNCTION place_order(
-    p_customer_id INTEGER,
-    p_product_id  INTEGER,
-    p_quantity    INTEGER
+    p_customer_id      INTEGER,
+    p_product_id       INTEGER,
+    p_quantity         INTEGER,
+    p_shipping_address TEXT DEFAULT NULL,
+    p_contact_phone    VARCHAR DEFAULT NULL
 ) RETURNS INTEGER AS $$
 DECLARE
     v_available INTEGER;
@@ -199,13 +203,21 @@ BEGIN
         RAISE EXCEPTION 'Product % is not available for ordering.', p_product_id;
     END IF;
 
-    IF v_available < p_quantity THEN
-        RAISE EXCEPTION 'Requested quantity (%) exceeds available stock (%).',
-            p_quantity, v_available;
+    IF v_available = 0 THEN
+        RAISE EXCEPTION 'This product is out of stock.';
     END IF;
 
-    INSERT INTO orders (customer_id, product_id, quantity, unit_price, status)
-    VALUES (p_customer_id, p_product_id, p_quantity, v_price, 'PENDING')
+    IF v_available < p_quantity THEN
+        RAISE EXCEPTION 'Only % units are currently available.', v_available;
+    END IF;
+
+    INSERT INTO orders (
+        customer_id, product_id, quantity, unit_price, status, shipping_address, contact_phone
+    )
+    VALUES (
+        p_customer_id, p_product_id, p_quantity, v_price, 'PENDING',
+        nullif(btrim(p_shipping_address), ''), nullif(btrim(p_contact_phone), '')
+    )
     RETURNING order_id INTO v_order_id;
 
     RETURN v_order_id;
@@ -213,43 +225,47 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION accept_order(
-    p_vendor_id INTEGER,
-    p_order_id  INTEGER
+    p_order_id  INTEGER,
+    p_vendor_id INTEGER
 ) RETURNS VOID AS $$
 DECLARE
-    v_product_id INTEGER;
-    v_vendor_id  INTEGER;
-    v_quantity   INTEGER;
     v_status     order_status;
-    v_stock      INTEGER;
+    v_product_id INTEGER;
+    v_ordered    INTEGER;
+    v_owner_id   INTEGER;
+    v_available  INTEGER;
 BEGIN
-    SELECT o.product_id, p.vendor_id, o.quantity, o.status, p.quantity
-      INTO v_product_id, v_vendor_id, v_quantity, v_status, v_stock
+    SELECT o.status, o.product_id, o.quantity
+      INTO v_status, v_product_id, v_ordered
       FROM orders o
-      JOIN products p ON p.product_id = o.product_id
      WHERE o.order_id = p_order_id
-       FOR UPDATE OF o, p;
+     FOR UPDATE;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Order % not found.', p_order_id;
     END IF;
 
-    IF v_vendor_id <> p_vendor_id THEN
-        RAISE EXCEPTION 'Order % does not belong to vendor %.', p_order_id, p_vendor_id;
+    SELECT vendor_id, quantity
+      INTO v_owner_id, v_available
+      FROM products
+     WHERE product_id = v_product_id
+     FOR UPDATE;
+
+    IF v_owner_id <> p_vendor_id THEN
+        RAISE EXCEPTION 'This order belongs to another vendor.';
     END IF;
 
     IF v_status <> 'PENDING' THEN
-        RAISE EXCEPTION 'Only PENDING orders can be accepted. Order % is currently %.',
-            p_order_id, v_status;
+        RAISE EXCEPTION 'Only a pending order can be accepted (this one is %).', v_status;
     END IF;
 
-    IF v_stock < v_quantity THEN
-        RAISE EXCEPTION 'Cannot accept: requested % units but only % remain in stock.',
-            v_quantity, v_stock;
+    IF v_available < v_ordered THEN
+        RAISE EXCEPTION 'Not enough stock to accept this order: % ordered, % available.',
+                        v_ordered, v_available;
     END IF;
 
     UPDATE products
-       SET quantity = quantity - v_quantity
+       SET quantity = quantity - v_ordered
      WHERE product_id = v_product_id;
 
     UPDATE orders
@@ -260,31 +276,30 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION reject_order(
-    p_vendor_id INTEGER,
-    p_order_id  INTEGER
+    p_order_id  INTEGER,
+    p_vendor_id INTEGER
 ) RETURNS VOID AS $$
 DECLARE
-    v_vendor_id INTEGER;
-    v_status    order_status;
+    v_status   order_status;
+    v_owner_id INTEGER;
 BEGIN
-    SELECT p.vendor_id, o.status
-      INTO v_vendor_id, v_status
+    SELECT o.status, p.vendor_id
+      INTO v_status, v_owner_id
       FROM orders o
       JOIN products p ON p.product_id = o.product_id
      WHERE o.order_id = p_order_id
-       FOR UPDATE OF o;
+     FOR UPDATE OF o;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Order % not found.', p_order_id;
     END IF;
 
-    IF v_vendor_id <> p_vendor_id THEN
-        RAISE EXCEPTION 'Order % does not belong to vendor %.', p_order_id, p_vendor_id;
+    IF v_owner_id <> p_vendor_id THEN
+        RAISE EXCEPTION 'This order belongs to another vendor.';
     END IF;
 
     IF v_status <> 'PENDING' THEN
-        RAISE EXCEPTION 'Only PENDING orders can be rejected. Order % is currently %.',
-            p_order_id, v_status;
+        RAISE EXCEPTION 'Only a pending order can be rejected (this one is %).', v_status;
     END IF;
 
     UPDATE orders
@@ -295,42 +310,46 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION cancel_order(
-    p_vendor_id INTEGER,
     p_order_id  INTEGER,
+    p_vendor_id INTEGER,
     p_reason    TEXT
 ) RETURNS VOID AS $$
 DECLARE
-    v_product_id INTEGER;
-    v_vendor_id  INTEGER;
-    v_quantity   INTEGER;
     v_status     order_status;
+    v_product_id INTEGER;
+    v_ordered    INTEGER;
+    v_owner_id   INTEGER;
 BEGIN
     IF p_reason IS NULL OR length(btrim(p_reason)) = 0 THEN
         RAISE EXCEPTION 'A cancellation reason is required.';
     END IF;
 
-    SELECT o.product_id, p.vendor_id, o.quantity, o.status
-      INTO v_product_id, v_vendor_id, v_quantity, v_status
+    SELECT o.status, o.product_id, o.quantity
+      INTO v_status, v_product_id, v_ordered
       FROM orders o
-      JOIN products p ON p.product_id = o.product_id
      WHERE o.order_id = p_order_id
-       FOR UPDATE OF o, p;
+     FOR UPDATE;
 
     IF NOT FOUND THEN
         RAISE EXCEPTION 'Order % not found.', p_order_id;
     END IF;
 
-    IF v_vendor_id <> p_vendor_id THEN
-        RAISE EXCEPTION 'Order % does not belong to vendor %.', p_order_id, p_vendor_id;
+    SELECT vendor_id INTO v_owner_id
+      FROM products
+     WHERE product_id = v_product_id
+     FOR UPDATE;
+
+    IF v_owner_id <> p_vendor_id THEN
+        RAISE EXCEPTION 'This order belongs to another vendor.';
     END IF;
 
     IF v_status NOT IN ('PENDING', 'ACCEPTED') THEN
-        RAISE EXCEPTION 'Cannot cancel an order with status %.', v_status;
+        RAISE EXCEPTION 'A % order cannot be cancelled.', v_status;
     END IF;
 
     IF v_status = 'ACCEPTED' THEN
         UPDATE products
-           SET quantity = quantity + v_quantity
+           SET quantity = quantity + v_ordered
          WHERE product_id = v_product_id;
     END IF;
 
@@ -343,74 +362,136 @@ END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION update_product_price(
-    p_vendor_id  INTEGER,
     p_product_id INTEGER,
-    p_new_price  NUMERIC
+    p_vendor_id  INTEGER,
+    p_price      NUMERIC
 ) RETURNS VOID AS $$
 DECLARE
-    v_owner_id INTEGER;
+    v_rows INTEGER;
 BEGIN
-    IF p_new_price IS NULL OR p_new_price < 0 THEN
-        RAISE EXCEPTION 'Price must be non-negative.';
-    END IF;
-
-    SELECT vendor_id
-      INTO v_owner_id
-      FROM products
-     WHERE product_id = p_product_id
-       FOR UPDATE;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Product % not found.', p_product_id;
-    END IF;
-
-    IF v_owner_id <> p_vendor_id THEN
-        RAISE EXCEPTION 'Product % does not belong to vendor %.', p_product_id, p_vendor_id;
+    IF p_price IS NULL OR p_price < 0 THEN
+        RAISE EXCEPTION 'Price cannot be negative.';
     END IF;
 
     UPDATE products
-       SET price = p_new_price
-     WHERE product_id = p_product_id;
+       SET price = p_price
+     WHERE product_id = p_product_id
+       AND vendor_id  = p_vendor_id
+       AND is_active;
+
+    GET DIAGNOSTICS v_rows = ROW_COUNT;
+    IF v_rows = 0 THEN
+        RAISE EXCEPTION 'Product % not found in your catalogue.', p_product_id;
+    END IF;
 END;
 $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION delete_product(
-    p_vendor_id  INTEGER,
-    p_product_id INTEGER
+    p_product_id INTEGER,
+    p_vendor_id  INTEGER
 ) RETURNS TEXT AS $$
 DECLARE
     v_owner_id    INTEGER;
     v_order_count INTEGER;
 BEGIN
-    SELECT vendor_id
-      INTO v_owner_id
+    SELECT vendor_id INTO v_owner_id
       FROM products
      WHERE product_id = p_product_id
-       FOR UPDATE;
+       AND is_active
+     FOR UPDATE;
 
     IF NOT FOUND THEN
-        RAISE EXCEPTION 'Product % not found.', p_product_id;
+        RAISE EXCEPTION 'Product % not found in your catalogue.', p_product_id;
     END IF;
 
     IF v_owner_id <> p_vendor_id THEN
-        RAISE EXCEPTION 'Product % does not belong to vendor %.', p_product_id, p_vendor_id;
+        RAISE EXCEPTION 'You can only delete your own products.';
     END IF;
 
-    SELECT count(*)
-      INTO v_order_count
+    SELECT count(*) INTO v_order_count
       FROM orders
      WHERE product_id = p_product_id;
 
     IF v_order_count = 0 THEN
         DELETE FROM products WHERE product_id = p_product_id;
-        RETURN 'HARD_DELETED';
-    ELSE
-        UPDATE products
-           SET is_active = FALSE,
-               quantity = 0
-         WHERE product_id = p_product_id;
-        RETURN 'SOFT_DELETED';
+        RETURN 'deleted';
     END IF;
+
+    UPDATE products
+       SET is_active = FALSE
+     WHERE product_id = p_product_id;
+    RETURN 'archived';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION restock_product(
+    p_product_id     INTEGER,
+    p_vendor_id      INTEGER,
+    p_added_quantity INTEGER
+) RETURNS INTEGER AS $$
+DECLARE
+    v_owner_id  INTEGER;
+    v_new_stock INTEGER;
+BEGIN
+    IF p_added_quantity IS NULL OR p_added_quantity <= 0 THEN
+        RAISE EXCEPTION 'Restock quantity must be at least 1.';
+    END IF;
+
+    SELECT vendor_id
+      INTO v_owner_id
+      FROM products
+     WHERE product_id = p_product_id
+       AND is_active
+       FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Product % not found in your catalogue.', p_product_id;
+    END IF;
+
+    IF v_owner_id <> p_vendor_id THEN
+        RAISE EXCEPTION 'You can only restock your own products.';
+    END IF;
+
+    UPDATE products
+       SET quantity = quantity + p_added_quantity
+     WHERE product_id = p_product_id
+     RETURNING quantity INTO v_new_stock;
+
+    RETURN v_new_stock;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION customer_cancel_order(
+    p_order_id    INTEGER,
+    p_customer_id INTEGER
+) RETURNS VOID AS $$
+DECLARE
+    v_customer_id INTEGER;
+    v_status      order_status;
+BEGIN
+    SELECT customer_id, status
+      INTO v_customer_id, v_status
+      FROM orders
+     WHERE order_id = p_order_id
+       FOR UPDATE;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Order % not found.', p_order_id;
+    END IF;
+
+    IF v_customer_id <> p_customer_id THEN
+        RAISE EXCEPTION 'You can only cancel your own orders.';
+    END IF;
+
+    IF v_status <> 'PENDING' THEN
+        RAISE EXCEPTION 'Only pending orders can be cancelled by customer (current status: %).', v_status;
+    END IF;
+
+    UPDATE orders
+       SET status = 'CANCELLED',
+           cancellation_reason = 'Cancelled by customer',
+           decided_at = now()
+     WHERE order_id = p_order_id;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -431,6 +512,7 @@ SELECT p.product_id,
  WHERE p.is_active
    AND p.quantity > 0;
 
+DROP VIEW IF EXISTS vw_order_details CASCADE;
 CREATE OR REPLACE VIEW vw_order_details AS
 SELECT o.order_id,
        o.status,
@@ -446,7 +528,10 @@ SELECT o.order_id,
        p.product_name,
        p.is_active    AS product_is_active,
        v.vendor_id,
-       v.company_name AS supplier_name
+       v.company_name AS supplier_name,
+       o.shipping_address,
+       o.contact_phone,
+       p.quantity     AS current_stock
   FROM orders    o
   JOIN customers c ON c.customer_id = o.customer_id
   JOIN products  p ON p.product_id  = o.product_id

@@ -38,12 +38,15 @@ def section(t):
     print(f"\n===== {t} =====")
 
 
-suffix = "e2e1"
+import time
+suffix = f"e2e_{int(time.time())}"
 V_EMAIL = f"vendor.{suffix}@test.com"
 V2_EMAIL = f"vendor2.{suffix}@test.com"
 C_EMAIL = f"cust.{suffix}@test.com"
 C2_EMAIL = f"cust2.{suffix}@test.com"
 PW = "secret123"
+
+P_NAME = f"E2E Laptop {suffix}"
 
 # ---------------------------------------------------------
 section("SCENARIO 1: vendor registers, logs in, creates a product")
@@ -66,7 +69,7 @@ st, r = call("POST", "/auth/login", {"email": V_EMAIL, "password": "wrongpw", "r
 check("wrong password is refused (401)", st == 401, f"status={st}")
 
 st, r = call("POST", "/products/mine",
-             {"product_name": "E2E Laptop", "price": "50000.00", "quantity": 10}, vtok)
+             {"product_name": P_NAME, "price": "50000.00", "quantity": 10}, vtok)
 check("vendor adds a product (201)", st == 201, f"status={st} {r}")
 pid = r.get("product_id")
 check("product starts at quantity 10", r.get("quantity") == 10, f"quantity={r.get('quantity')}")
@@ -102,7 +105,8 @@ check("customer sees products from multiple vendors",
       len({p["supplier_name"] for p in r}) > 1,
       f"suppliers={sorted({p['supplier_name'] for p in r})}")
 
-st, r = call("GET", "/products?search=E2E%20Lap", token=ctok)
+import urllib.parse
+st, r = call("GET", f"/products?search={urllib.parse.quote(P_NAME)}", token=ctok)
 check("search by name finds the product", len(r) == 1 and r[0]["product_id"] == pid, f"hits={len(r)}")
 check("search result carries the supplier name",
       r[0]["supplier_name"] == "E2E Supplies", f"supplier={r[0]['supplier_name']}")
@@ -156,7 +160,7 @@ st, r = call("GET", "/orders/incoming", token=vtok)
 check("vendor sees the incoming order", any(o["order_id"] == oid for o in r), f"count={len(r)}")
 row = next(o for o in r if o["order_id"] == oid)
 check("incoming order shows customer, product, qty, date and status",
-      row["customer_name"] == "E2E Buyer" and row["product_name"] == "E2E Laptop"
+      row["customer_name"] == "E2E Buyer" and row["product_name"] == P_NAME
       and row["quantity"] == 3 and row["status"] == "PENDING" and row["ordered_at"],
       f"{row['customer_name']} / {row['product_name']} / qty {row['quantity']} / {row['ordered_at']}")
 
@@ -244,6 +248,87 @@ check("cancelling an accepted order returned the 4 units (3 -> 7)",
       f"quantity={next(p for p in r if p['product_id'] == pid)['quantity']}")
 
 # ---------------------------------------------------------
+section("SCENARIO 7B: vendor restocks inventory")
+# ---------------------------------------------------------
+st, r = call("PATCH", f"/products/mine/{pid}/stock", {"added_quantity": 5}, v2tok)
+check("vendor B cannot restock vendor A's product", st == 400, f"status={st} detail={r.get('detail')}")
+
+st, r = call("PATCH", f"/products/mine/{pid}/stock", {"added_quantity": 0}, vtok)
+check("restocking with 0 is refused (422)", st == 422, f"status={st}")
+
+st, r = call("PATCH", f"/products/mine/{pid}/stock", {"added_quantity": -3}, vtok)
+check("restocking with negative quantity is refused (422)", st == 422, f"status={st}")
+
+st, r = call("PATCH", f"/products/mine/{pid}/stock", {"added_quantity": 5}, vtok)
+check("vendor can restock product (7 -> 12)", st == 200 and r.get("quantity") == 12,
+      f"status={st} quantity={r.get('quantity')}")
+
+st, r = call("GET", "/products/mine", token=vtok)
+check("catalogue confirms restocked quantity 12",
+      next(p for p in r if p["product_id"] == pid)["quantity"] == 12,
+      f"quantity={next(p for p in r if p['product_id'] == pid)['quantity']}")
+
+st, r = call("GET", f"/products/{pid}", token=ctok)
+check("customer sees updated available quantity 12",
+      r.get("available_quantity") == 12, f"available={r.get('available_quantity')}")
+
+# ---------------------------------------------------------
+section("SCENARIO 7C: shipping details and customer self-service cancellation")
+# ---------------------------------------------------------
+SHIP_ADDR = "Flat 402, Green Valley Apartments, Bengaluru"
+SHIP_PHONE = "+91 98765 43210"
+st, r = call("POST", "/orders",
+             {"product_id": pid, "quantity": 2, "shipping_address": SHIP_ADDR, "contact_phone": SHIP_PHONE},
+             ctok)
+check("customer places order with shipping address & phone",
+      st == 201 and r.get("status") == "PENDING", f"status={st} {r}")
+cust_oid = r["order_id"]
+check("order response includes shipping address", r.get("shipping_address") == SHIP_ADDR,
+      f"shipping_address={r.get('shipping_address')}")
+check("order response includes contact phone", r.get("contact_phone") == SHIP_PHONE,
+      f"contact_phone={r.get('contact_phone')}")
+
+st, r = call("GET", "/orders/incoming", token=vtok)
+v_row = next((o for o in r if o["order_id"] == cust_oid), None)
+check("vendor sees shipping address on incoming order",
+      v_row is not None and v_row.get("shipping_address") == SHIP_ADDR,
+      f"shipping_address={v_row.get('shipping_address') if v_row else None}")
+check("vendor sees contact phone on incoming order",
+      v_row is not None and v_row.get("contact_phone") == SHIP_PHONE,
+      f"contact_phone={v_row.get('contact_phone') if v_row else None}")
+
+st, r = call("GET", "/orders/mine", token=ctok)
+c_row = next((o for o in r if o["order_id"] == cust_oid), None)
+check("customer sees shipping details on order history",
+      c_row is not None and c_row.get("shipping_address") == SHIP_ADDR,
+      f"shipping_address={c_row.get('shipping_address') if c_row else None}")
+
+# Customer 2 registration for isolation checks
+st, r = call("POST", "/auth/register/customer",
+             {"full_name": "Second Buyer", "email": C2_EMAIL, "password": PW})
+c2tok = r["access_token"]
+
+# Customer 2 cannot cancel customer 1's order
+st, r = call("POST", f"/orders/{cust_oid}/cancel-my-order", token=c2tok)
+check("customer B cannot cancel customer A's order", st == 400, f"status={st} detail={r.get('detail')}")
+
+# Customer 1 cancels their own pending order
+st, r = call("POST", f"/orders/{cust_oid}/cancel-my-order", token=ctok)
+check("customer cancels their own pending order",
+      st == 200 and r.get("status") == "CANCELLED" and r.get("cancellation_reason") == "Cancelled by customer",
+      f"status={st} {r}")
+
+# Customer cannot cancel an already accepted order
+st, r = call("POST", "/orders", {"product_id": pid, "quantity": 1}, ctok)
+acc_oid = r["order_id"]
+call("POST", f"/orders/{acc_oid}/accept", token=vtok)
+st, r = call("POST", f"/orders/{acc_oid}/cancel-my-order", token=ctok)
+check("customer cannot cancel an accepted order", st == 400, f"status={st} detail={r.get('detail')}")
+
+# Vendor cancels the accepted order to return stock and maintain test isolation
+call("POST", f"/orders/{acc_oid}/cancel", {"reason": "Cancelled by agreement."}, vtok)
+
+# ---------------------------------------------------------
 section("SCENARIO 8: authorisation and cross-account isolation")
 # ---------------------------------------------------------
 st, r = call("PATCH", f"/products/mine/{pid}/price", {"price": "1.00"}, v2tok)
@@ -282,9 +367,6 @@ st, r = call("GET", "/orders/mine", token="not.a.real.token")
 check("a forged token is rejected (401)", st == 401, f"status={st}")
 
 # a second customer must not see the first customer's orders
-st, r = call("POST", "/auth/register/customer",
-             {"full_name": "Second Buyer", "email": C2_EMAIL, "password": PW})
-c2tok = r["access_token"]
 st, r = call("GET", "/orders/mine", token=c2tok)
 check("a new customer sees none of the other customer's orders", r == [], f"rows={len(r)}")
 

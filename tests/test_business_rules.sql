@@ -146,6 +146,45 @@ SELECT cancel_order(current_setting('t.aid')::int, 1, 'Courier lost the consignm
 SELECT t_assert(quantity = 15, 'cancelling an ACCEPTED order returned the 5 units', 'stock=' || quantity) FROM products WHERE product_id = 1;
 
 \echo ''
+\echo '===== RULE: restocking inventory (restock_product) ====='
+
+SELECT t_expect_fail(
+  $q$SELECT restock_product(1, 2, 5)$q$,
+  'vendor 2 cannot restock vendor 1 product', 'You can only restock your own products.');
+
+SELECT t_expect_fail(
+  $q$SELECT restock_product(1, 1, 0)$q$,
+  'zero added quantity is rejected', 'Added quantity must be greater than zero.');
+
+SELECT t_expect_fail(
+  $q$SELECT restock_product(1, 1, -5)$q$,
+  'negative added quantity is rejected', 'Added quantity must be greater than zero.');
+
+SELECT restock_product(1, 1, 5);
+SELECT t_assert(quantity = 20, 'restocking 5 units increased stock 15 -> 20', 'stock=' || quantity) FROM products WHERE product_id = 1;
+
+\echo ''
+\echo '===== RULE: customer self-service cancellation (customer_cancel_order) ====='
+
+SELECT set_config('t.cust_cancel_oid', place_order(1, 1, 2, '221B Baker St', '+91 9999999999')::text, false);
+SELECT t_assert(shipping_address = '221B Baker St' AND contact_phone = '+91 9999999999',
+                'order stores shipping address and contact phone',
+                'addr=' || coalesce(shipping_address, 'null') || ' phone=' || coalesce(contact_phone, 'null'))
+  FROM orders WHERE order_id = current_setting('t.cust_cancel_oid')::int;
+
+SELECT t_expect_fail(
+  $q$SELECT customer_cancel_order(current_setting('t.cust_cancel_oid')::int, 2)$q$,
+  'customer 2 cannot cancel customer 1 order', 'You can only cancel your own orders.');
+
+SELECT customer_cancel_order(current_setting('t.cust_cancel_oid')::int, 1);
+SELECT t_assert(status = 'CANCELLED' AND cancellation_reason = 'Cancelled by customer',
+                'order is CANCELLED with reason Cancelled by customer',
+                'status=' || status || ' reason=' || cancellation_reason)
+  FROM orders WHERE order_id = current_setting('t.cust_cancel_oid')::int;
+
+SELECT t_assert(quantity = 20, 'cancelling pending order left stock untouched', 'stock=' || quantity) FROM products WHERE product_id = 1;
+
+\echo ''
 \echo '===== RULE: vendor isolation (req 23, scenario 8) ====='
 
 SELECT t_expect_fail(

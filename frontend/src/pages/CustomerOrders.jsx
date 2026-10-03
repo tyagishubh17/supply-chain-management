@@ -1,15 +1,19 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { money, orderDate, orderTime } from "../format";
 
 /**
  * Requirement 14: the customer's own order history, with the supplier,
- * quantity, price, date, time, status and -- when the vendor cancelled --
- * the stored cancellation reason.
+ * quantity, price, date, time, status, cancellation reason, and the ability
+ * to cancel a pending order.
  */
 export default function CustomerOrders() {
   const [orders, setOrders] = useState(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [cancellingOrder, setCancellingOrder] = useState(null);
+  const [busyId, setBusyId] = useState(null);
 
   const load = useCallback(() => {
     api.myOrders()
@@ -27,14 +31,54 @@ export default function CustomerOrders() {
     load();
   }, [load]);
 
-  // The vendor decides these orders, possibly while this tab sits open in
-  // another window. Refetching when the tab regains focus means the status
-  // on screen is the status in the database, not whatever it was when the
-  // page was first rendered.
+  // Refetch when tab regains focus
   useEffect(() => {
     window.addEventListener("focus", load);
     return () => window.removeEventListener("focus", load);
   }, [load]);
+
+  // Escape closes cancellation modal
+  useEffect(() => {
+    if (!cancellingOrder) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") setCancellingOrder(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cancellingOrder]);
+
+  async function handleCancel(order) {
+    setError("");
+    setNotice("");
+    setBusyId(order.order_id);
+    try {
+      await api.cancelMyOrder(order.order_id);
+      setNotice(`Order #${order.order_id} has been cancelled.`);
+      setCancellingOrder(null);
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  const counts = useMemo(() => {
+    if (!orders) return { ALL: 0, PENDING: 0, ACCEPTED: 0, REJECTED: 0, CANCELLED: 0 };
+    return {
+      ALL: orders.length,
+      PENDING: orders.filter((o) => o.status === "PENDING").length,
+      ACCEPTED: orders.filter((o) => o.status === "ACCEPTED").length,
+      REJECTED: orders.filter((o) => o.status === "REJECTED").length,
+      CANCELLED: orders.filter((o) => o.status === "CANCELLED").length,
+    };
+  }, [orders]);
+
+  const filteredOrders = useMemo(() => {
+    if (!orders) return null;
+    if (statusFilter === "ALL") return orders;
+    return orders.filter((o) => o.status === statusFilter);
+  }, [orders, statusFilter]);
 
   return (
     <>
@@ -44,16 +88,30 @@ export default function CustomerOrders() {
       </div>
 
       {error && <div className="error-box" role="alert">{error}</div>}
+      {notice && <div className="notice-box" role="status">{notice}</div>}
+
+      <div className="role-toggle" style={{ marginBottom: 16 }}>
+        {["ALL", "PENDING", "ACCEPTED", "REJECTED", "CANCELLED"].map((st) => (
+          <button
+            key={st}
+            type="button"
+            aria-pressed={statusFilter === st}
+            onClick={() => setStatusFilter(st)}
+          >
+            {st === "ALL" ? "All Orders" : st} ({counts[st]})
+          </button>
+        ))}
+      </div>
 
       <div className="panel">
-        {orders === null ? (
+        {filteredOrders === null ? (
           <div className="loading" role="status">Loading…</div>
-        ) : orders.length === 0 ? (
-          // A failed fetch leaves the list empty, so the empty state is
-          // suppressed rather than claiming there are no orders.
+        ) : filteredOrders.length === 0 ? (
           error ? null : (
             <div className="empty-state">
-              You have not placed any orders yet.
+              {statusFilter !== "ALL"
+                ? `You have no ${statusFilter.toLowerCase()} orders.`
+                : "You have not placed any orders yet."}
             </div>
           )
         ) : (
@@ -61,8 +119,6 @@ export default function CustomerOrders() {
             <table>
               <thead>
                 <tr>
-                  {/* The order number is what the confirmation message
-                      quotes, so it has to be on the row it refers to. */}
                   <th className="num">Order</th>
                   <th>Product</th>
                   <th>Supplier</th>
@@ -70,13 +126,22 @@ export default function CustomerOrders() {
                   <th className="num">Price</th>
                   <th>Ordered</th>
                   <th>Status</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
-                {orders.map((o) => (
+                {filteredOrders.map((o) => (
                   <tr key={o.order_id}>
                     <td className="num">{o.order_id}</td>
-                    <td className="name">{o.product_name}</td>
+                    <td className="name">
+                      {o.product_name}
+                      {(o.shipping_address || o.contact_phone) && (
+                        <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: 4 }}>
+                          📍 Deliver to: {o.shipping_address || "Standard"}
+                          {o.contact_phone ? ` (📞 ${o.contact_phone})` : ""}
+                        </div>
+                      )}
+                    </td>
                     <td>{o.supplier_name}</td>
                     <td className="num">{o.quantity}</td>
                     <td className="num">
@@ -89,13 +154,22 @@ export default function CustomerOrders() {
                     </td>
                     <td>
                       <span className={`status ${o.status}`}>{o.status}</span>
-                      {/* The vendor's stored reason, shown to the customer
-                          as well as on the vendor's own dashboard. */}
                       {o.cancellation_reason && (
                         <div className="reason-box">
                           <span className="reason-label">Reason</span>
                           {o.cancellation_reason}
                         </div>
+                      )}
+                    </td>
+                    <td>
+                      {o.status === "PENDING" && (
+                        <button
+                          className="btn btn-danger btn-sm"
+                          disabled={busyId === o.order_id}
+                          onClick={() => setCancellingOrder(o)}
+                        >
+                          Cancel
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -105,6 +179,36 @@ export default function CustomerOrders() {
           </div>
         )}
       </div>
+
+      {cancellingOrder && (
+        <div className="modal-backdrop" onClick={() => setCancellingOrder(null)}>
+          <div
+            className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Cancel order #${cancellingOrder.order_id}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2>Cancel order #{cancellingOrder.order_id}?</h2>
+            <p style={{ marginTop: 0, fontSize: "0.9rem", color: "var(--text-muted)" }}>
+              Are you sure you want to cancel your order for <strong>{cancellingOrder.quantity} × {cancellingOrder.product_name}</strong> from <strong>{cancellingOrder.supplier_name}</strong>?
+            </p>
+            <div className="modal-actions">
+              <button type="button" className="btn btn-ghost" onClick={() => setCancellingOrder(null)}>
+                Keep order
+              </button>
+              <button
+                className="btn btn-danger"
+                disabled={busyId === cancellingOrder.order_id}
+                onClick={() => handleCancel(cancellingOrder)}
+              >
+                {busyId === cancellingOrder.order_id ? "Cancelling…" : "Cancel order"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
+
