@@ -34,16 +34,18 @@ CREATE TRIGGER trg_products_updated_at
 -- ---------------------------------------------------------
 -- place_order : customer places an order
 -- ---------------------------------------------------------
--- Business rules 4 and 5:
+-- Business rules 4 and 5 (plus optional shipping address and contact phone):
 --   * the requested quantity must not exceed the available quantity
 --   * the available quantity is NOT touched here -- placing an order
 --     only records intent. Stock moves on acceptance.
 -- SELECT ... FOR UPDATE locks the product row so two customers cannot
 -- both pass the availability check against the same last units.
 CREATE OR REPLACE FUNCTION place_order(
-    p_customer_id INTEGER,
-    p_product_id  INTEGER,
-    p_quantity    INTEGER
+    p_customer_id      INTEGER,
+    p_product_id       INTEGER,
+    p_quantity         INTEGER,
+    p_shipping_address TEXT    DEFAULT NULL,
+    p_contact_phone    VARCHAR DEFAULT NULL
 ) RETURNS INTEGER AS $$
 DECLARE
     v_available INTEGER;
@@ -77,8 +79,14 @@ BEGIN
         RAISE EXCEPTION 'Only % units are currently available.', v_available;
     END IF;
 
-    INSERT INTO orders (customer_id, product_id, quantity, unit_price, status)
-    VALUES (p_customer_id, p_product_id, p_quantity, v_price, 'PENDING')
+    INSERT INTO orders (
+        customer_id, product_id, quantity, unit_price, status,
+        shipping_address, contact_phone
+    )
+    VALUES (
+        p_customer_id, p_product_id, p_quantity, v_price, 'PENDING',
+        nullif(btrim(p_shipping_address), ''), nullif(btrim(p_contact_phone), '')
+    )
     RETURNING order_id INTO v_order_id;
 
     RETURN v_order_id;
