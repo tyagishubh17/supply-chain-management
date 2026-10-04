@@ -64,14 +64,16 @@ recommendations) is deliberately out of scope.
 | Register, log in, log out | `/register`, `/login` |
 | Add a product (name, price, quantity) | My products |
 | View own products, with created/updated dates | My products |
-| Change the price of an own product | My products → Edit price |
+| Change the price of an own product | My products → Price |
 | Restock inventory for an own product | My products → Restock |
-| Delete an own product, preserving order history | My products → Delete |
+| Delete an own product, preserving order history | My products → delete (bin) icon |
 | See incoming orders for own products, with customer, shipping address, product, quantity, date, time and status | Incoming orders |
+| Search incoming orders by customer, product or order number, and filter by status with a count per status | Incoming orders |
+| See the current stock of the ordered product on each incoming order | Incoming orders |
 | Accept an order (the only action that reduces stock) | Incoming orders → Accept |
 | Reject an order (stock unchanged) | Incoming orders → Reject |
 | Cancel an order with a mandatory stored reason | Incoming orders → Cancel |
-| Sales analytics: revenue by product, orders over time, totals | Sales |
+| Sales analytics: totals, revenue by product, orders over time, units sold per product | Sales |
 
 A vendor can only ever see and change **their own** products and the orders
 placed against them.
@@ -83,9 +85,10 @@ placed against them.
 | Register, log in, log out | `/register`, `/login` |
 | Browse available products from all vendors | Browse products |
 | Search products by name | Browse products → search box |
+| Filter products by category | Browse products → category chips |
 | View a product's details and its supplier | Browse products → View & order |
 | Place an order with shipping address and phone | Product dialog → Place order |
-| Order history with product, supplier, quantity, price, shipping details, date, time and status | My orders |
+| Order history with product, supplier, quantity, price, shipping details, date, time and status, filterable by status with a count per status | My orders |
 | Cancel own pending order | My orders → Cancel order |
 | See the cancellation reason | My orders |
 
@@ -865,59 +868,55 @@ The screenshots in the next section were taken from the running application.
 ## 14. Screenshots
 
 All screenshots come from the running application with the demo data from
-`database/seed.sql`.
+`database/seed.sql`, plus orders placed while testing.
 
 ### 14.1 Authentication
 
-**Sign in.** One form for both roles: the Customer / Vendor toggle decides
-which account type the credentials are checked against.
+**Sign in.** A split screen: the left panel summarises what the system does
+(inventory, order decisions, sales insight) and the right panel holds the form.
+The Customer / Vendor toggle decides which account type the credentials are
+checked against.
 
 ![Login page](docs/screenshots/login.png)
 
-**Create an account.** Registration for either role, with the same toggle.
-Required fields are validated in the browser before anything is sent.
-
-![Registration page](docs/screenshots/register.png)
-
 ### 14.2 Vendor portal
 
-**My products.** The vendor's own catalogue with price, available quantity,
-created and updated dates, and the Restock, Edit price and Delete actions. The
-Wireless Mouse sits at quantity 0, which is why it does not appear in the
-customer catalogue. The "Add a product" form shows the browser's required-field
-check.
+**My products.** The vendor's own catalogue with price, stock, created and
+updated dates, and the Restock, Price and delete actions. The "Add Product"
+form sits above it. The note under the heading states the key rule: stock
+decreases only when the vendor accepts an order.
 
 ![Vendor products page](docs/screenshots/vendor-products.png)
 
-**Incoming orders.** Orders placed against this vendor's products, with
-status filters and counts, a search box, the customer's shipping address and
-phone, and Accept, Reject and Cancel actions. Order 11 needs 8 units but only 0
-are in stock, so the page flags the shortfall and disables Accept for it.
-Cancelled orders show their stored reason.
+**Incoming orders.** Orders placed against this vendor's products, shown as
+cards. A search box and status tabs (each with a count) sit at the top. Each
+card shows the customer, quantity, unit price, the **current stock** of the
+product, the delivery location when one was given, and the Cancel action.
+Cancelled orders keep their stored reason.
 
 ![Vendor incoming orders](docs/screenshots/vendor-orders.png)
 
-**Incoming orders, filtered to Cancelled.** The mandatory cancellation reason
-is stored on the order and displayed here.
-
-![Vendor cancelled orders with reason](docs/screenshots/vendor-orders-cancelled.png)
-
-**Sales.** Totals plus a revenue-by-product chart and an orders-over-time
-chart. Only accepted orders count as revenue, so the 2 pending orders are shown
-separately as "Awaiting decision".
+**Sales.** Three summary cards (total revenue, accepted orders, pending
+orders), a revenue-by-product chart, an orders-over-time chart and a Units
+Sold table. Only accepted orders count as revenue; rejected and cancelled
+orders are excluded.
 
 ![Vendor sales analytics](docs/screenshots/vendor-sales.png)
 
 ### 14.3 Customer portal
 
-**Browse products.** The combined catalogue of every orderable product, with
-the supplier shown on each row and a search box that filters by product name.
+**Browse products.** Product cards with an image, the category, the product
+name, the supplier, the price and an availability badge, plus a name search and
+category chips (All products, Computers & Electronics, Packaging & Shipping,
+Apparel & Textiles). "View & order" opens the product and its supplier.
 
 ![Customer product catalogue](docs/screenshots/customer-shop.png)
 
-**My orders.** The customer's own order history with supplier, quantity,
-price, date and time, status, delivery details, and a Cancel button on pending
-orders. A cancelled order shows its reason, the same text the vendor sees.
+**My orders.** The customer's own order history as cards, with status tabs
+and counts. Each card shows the product, supplier, quantity, unit price, total
+and the date and time. Order 48 shows its delivery address and phone, and the
+cancellation reason that the vendor entered, the same text the vendor sees.
+Pending orders carry a Cancel button.
 
 ![Customer order history](docs/screenshots/customer-orders.png)
 
@@ -930,6 +929,6 @@ orders. A cancelled order shows its reason, the same text the vendor sees.
 | **Shubh Tyagi** | SQL logic | The order-workflow functions in `functions.sql` (place/accept/reject/cancel), row locking and transaction handling, the three views, `queries.sql`, `seed.sql` |
 | **Imran Farhat** | Database design | ER model and relational schema, normalisation to 3NF, `tables.sql` and `constraints.sql`, the referential-integrity strategy for product deletion, indexes |
 | **Mayank Kushwaha** | Backend | FastAPI routers, JWT authentication and the role dependencies, mapping database errors to API responses, environment-based configuration, the API test suite |
-| **Sakshee Kumari** | Frontend | React pages for both roles, the cream-and-green design system, product search, the order and cancellation dialogs, the Recharts sales views, responsive layout |
+| **Sakshee Kumari** | Frontend | React pages for both roles, the navy-and-amber design system, product cards with category filters and search, the order and cancellation dialogs, the Recharts sales views, responsive layout |
 
 
