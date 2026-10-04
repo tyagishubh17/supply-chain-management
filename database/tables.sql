@@ -15,6 +15,9 @@ CREATE TYPE order_status AS ENUM ('PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED'
 
 -- ---------------------------------------------------------
 -- vendors : a supplier who owns products and decides on orders
+-- vendor_id is the stable surrogate key used by products.vendor_id
+-- and by vendor-specific order operations.
+-- Email identifies the account and is enforced as unique separately.
 -- ---------------------------------------------------------
 CREATE TABLE vendors (
     vendor_id     SERIAL       PRIMARY KEY,
@@ -56,13 +59,17 @@ CREATE TABLE products (
 -- ---------------------------------------------------------
 -- orders : one customer ordering one product
 -- ---------------------------------------------------------
--- unit_price is a deliberate price snapshot: it records what the product
--- cost at the moment of ordering. It is NOT redundant with products.price,
--- because the vendor may change the price later and the order must keep
--- its historical value.
+-- unit_price is a deliberate historical price snapshot. It stores the
+-- product price that applied when the order was created, so later changes
+-- to products.price do not change existing order totals.
 --
--- The vendor is intentionally NOT stored here. It is reached through
--- products.vendor_id, which avoids a transitive dependency (3NF).
+-- The vendor_id is intentionally not duplicated in orders. The vendor is
+-- resolved through products.vendor_id, avoiding a transitive dependency
+-- and keeping the order relation consistent with the 3NF design.
+--
+-- This design preserves both:
+--   1. historical order pricing
+--   2. normalized vendor-product-order relationships
 CREATE TABLE orders (
     order_id            SERIAL         PRIMARY KEY,
     customer_id         INTEGER        NOT NULL,
