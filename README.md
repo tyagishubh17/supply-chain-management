@@ -6,8 +6,8 @@ A DBMS course project: a minimal multi-vendor supply chain system where
 place orders.
 
 Built on **Supabase PostgreSQL**, with a FastAPI backend and a React
-frontend. The emphasis is on database design — relationships, constraints,
-normalisation, transactions and SQL — rather than on breadth of features.
+frontend. The emphasis is on database design (relationships, constraints,
+normalisation, transactions and SQL) rather than on breadth of features.
 
 The single most important rule in the system:
 
@@ -50,8 +50,8 @@ waits for the owning vendor, who can **accept** it (stock decreases),
 **reject** it (stock untouched), or **cancel** it with a mandatory reason
 that both sides can then see.
 
-Everything else — payments, delivery tracking, warehouses, reviews,
-recommendations — is deliberately out of scope.
+Everything else (payments, delivery tracking, warehouses, reviews,
+recommendations) is deliberately out of scope.
 
 ---
 
@@ -68,8 +68,8 @@ recommendations — is deliberately out of scope.
 | Restock inventory for an own product | My products → Restock |
 | Delete an own product, preserving order history | My products → Delete |
 | See incoming orders for own products, with customer, shipping address, product, quantity, date, time and status | Incoming orders |
-| Accept an order — the only action that reduces stock | Incoming orders → Accept |
-| Reject an order — stock unchanged | Incoming orders → Reject |
+| Accept an order (the only action that reduces stock) | Incoming orders → Accept |
+| Reject an order (stock unchanged) | Incoming orders → Reject |
 | Cancel an order with a mandatory stored reason | Incoming orders → Cancel |
 | Sales analytics: revenue by product, orders over time, totals | Sales |
 
@@ -111,6 +111,7 @@ or on a local PostgreSQL instance.
 
 ```
 database/          all SQL, in build order
+  supabase_setup.sql all-in-one script for the Supabase SQL Editor
   schema.sql         master build script
   tables.sql         CREATE TYPE + 4 CREATE TABLEs
   constraints.sql    PK/FK/UNIQUE/CHECK via ALTER TABLE, indexes, email trigger
@@ -140,8 +141,12 @@ frontend/
     components/      Layout, ChartTooltip
     pages/           Login, Register, Vendor*, Customer*
 tests/
-  test_business_rules.sql   44 database-level checks
-  test_api.py               67 end-to-end API checks
+  test_business_rules.sql   52 database-level checks
+  test_api.py               82 end-to-end API checks
+  test_ui_contract.py       14 API to frontend contract checks
+docs/
+  diagrams/          ER diagram images (PNG and SVG) and their Graphviz sources
+  screenshots/       application screenshots used in this README
 ```
 
 ---
@@ -150,16 +155,22 @@ tests/
 
 ### 4.1 Database
 
-**On Supabase:** create a project, open the **SQL Editor**, and run these
-files in order (the editor has no `\i` include support, so paste them one at
-a time):
+**On Supabase (recommended):** create a project, open the **SQL Editor**,
+paste the whole of `database/supabase_setup.sql` and click **Run**. That one
+file drops and rebuilds everything (tables, constraints, functions, views) and
+loads the demo data. It is generated from the individual files below, so it
+always matches them.
 
-1. `database/schema.sql` — for the `DROP` section at the top
+**On Supabase, step by step:** the editor has no `\i` include support, so
+paste these files one at a time, in this order:
+
+1. `database/schema.sql`: only the `DROP` section at the top (stop before the
+   `\ir` lines, which are `psql` commands the editor cannot run)
 2. `database/tables.sql`
 3. `database/constraints.sql`
 4. `database/functions.sql`
 5. `database/views.sql`
-6. `database/seed.sql` — optional demo data
+6. `database/seed.sql` (optional demo data)
 
 **On a local PostgreSQL**, `schema.sql` does the whole build itself:
 
@@ -219,7 +230,7 @@ Opens <http://localhost:5173>. It expects the API at
 > **Windows note.** Use `127.0.0.1` rather than `localhost` in
 > `DATABASE_URL`. `localhost` resolves to the IPv6 address `::1` first, and
 > if PostgreSQL only listens on IPv4 (a Docker published port, for example)
-> every connection stalls for about ten seconds before falling back — which
+> every connection stalls for about ten seconds before falling back, which
 > makes the whole app appear broken. This was measured at 10.2 s per request
 > with `localhost` versus 0.055 s with `127.0.0.1`.
 
@@ -229,20 +240,20 @@ Opens <http://localhost:5173>. It expects the API at
 
 Four tables. Names are plural, primary keys are `<entity>_id`.
 
-### `vendors` — a supplier
+### `vendors`: a supplier
 
 | Column | Type | Notes |
 |---|---|---|
 | `vendor_id` | `SERIAL` | **PK** |
 | `company_name` | `VARCHAR(150)` | `NOT NULL`. Shown to customers as the supplier |
-| `email` | `VARCHAR(150)` | `NOT NULL`, **UNIQUE** — the login identifier |
+| `email` | `VARCHAR(150)` | `NOT NULL`, **UNIQUE**. The login identifier |
 | `password_hash` | `VARCHAR(255)` | `NOT NULL`. bcrypt hash; never a plaintext password |
 | `created_at` | `TIMESTAMPTZ` | `NOT NULL DEFAULT now()` |
 
 **Purpose:** a vendor account. Owns products and decides on the orders
 placed against them.
 
-### `customers` — a buyer
+### `customers`: a buyer
 
 | Column | Type | Notes |
 |---|---|---|
@@ -254,7 +265,7 @@ placed against them.
 
 **Purpose:** a customer account. Browses products and places orders.
 
-### `products` — a product, owned by exactly one vendor
+### `products`: a product, owned by exactly one vendor
 
 | Column | Type | Notes |
 |---|---|---|
@@ -270,7 +281,7 @@ placed against them.
 **Purpose:** the catalogue. `quantity` is the single source of truth for
 stock, and is only ever changed by the order-workflow functions.
 
-### `orders` — one customer ordering one product
+### `orders`: one customer ordering one product
 
 | Column | Type | Notes |
 |---|---|---|
@@ -320,43 +331,29 @@ catalogue has no meaning without the vendor.
 
 ## 6. ER diagram
 
+### 6.1 Crow's foot notation (tables, columns and keys)
+
+![ER diagram in crow's foot notation](docs/diagrams/er-crowsfoot.png)
+
+### 6.2 Chen notation (entities, relationships and attributes)
+
+![ER diagram in Chen notation](docs/diagrams/er-chen.png)
+
+Both diagrams are also available as SVG in `docs/diagrams/`, together with the
+Graphviz `.dot` source of the crow's foot version.
+
+### Cardinalities
+
+| Relationship | Cardinality | Meaning |
+|---|---|---|
+| `VENDORS` supplies `PRODUCTS` | 1 : N | one vendor supplies many products |
+| `CUSTOMERS` places `ORDERS` | 1 : N | one customer places many orders |
+| `PRODUCTS` is ordered in `ORDERS` | 1 : N | one product is ordered many times |
+
+A vendor reaches their orders through `PRODUCTS`:
+
 ```
-┌─────────────────────────┐                  ┌──────────────────────────┐
-│        VENDORS          │                  │       CUSTOMERS          │
-├─────────────────────────┤                  ├──────────────────────────┤
-│ vendor_id      PK       │                  │ customer_id     PK       │
-│ company_name            │                  │ full_name                │
-│ email          UNIQUE   │                  │ email           UNIQUE   │
-│ password_hash           │                  │ password_hash            │
-│ created_at              │                  │ created_at               │
-└───────────┬─────────────┘                  └────────────┬─────────────┘
-            │                                             │
-            │ 1                                           │ 1
-            │                                             │
-            │ supplies                                    │ places
-            │                                             │
-            │ N                                           │ N
-┌───────────┴─────────────┐                  ┌────────────┴─────────────┐
-│        PRODUCTS         │ 1              N │         ORDERS           │
-├─────────────────────────┤────────────────▶ ├──────────────────────────┤
-│ product_id     PK       │   is ordered in  │ order_id         PK      │
-│ vendor_id      FK       │                  │ customer_id      FK      │
-│ product_name            │                  │ product_id       FK      │
-│ price          ≥ 0      │                  │ quantity         > 0     │
-│ quantity       ≥ 0      │                  │ unit_price       ≥ 0     │
-│ is_active               │                  │ status           ENUM    │
-│ created_at              │                  │ cancellation_reason      │
-│ updated_at              │                  │ ordered_at               │
-└─────────────────────────┘                  │ decided_at               │
-                                             └──────────────────────────┘
-
-Cardinalities
-  VENDORS   (1) ──────── (N) PRODUCTS      one vendor supplies many products
-  CUSTOMERS (1) ──────── (N) ORDERS        one customer places many orders
-  PRODUCTS  (1) ──────── (N) ORDERS        one product is ordered many times
-
-  A vendor reaches their orders through PRODUCTS:
-      VENDORS → PRODUCTS → ORDERS
+VENDORS -> PRODUCTS -> ORDERS
 ```
 
 Note that `VENDORS` and `PRODUCTS` is **1:N, not M:N**. Each product row
@@ -418,8 +415,8 @@ one flat table recording everything about an order:
 | 1 | Rahul Mehta | rahul@customer.com | Laptop×2 @45000, USB-C Cable×3 @120 | ABC Electronics | abc@vendor.com | 2026-08-27 |
 | 2 | Priya Nair | priya@customer.com | Cotton T-Shirt×40 @250 | Sharma Textiles | sharma@vendor.com | 2026-09-09 |
 
-Problems: `products_ordered` holds a **repeating group** — several values in
-one cell — so it cannot be queried, summed or constrained.
+Problems: `products_ordered` holds a **repeating group** (several values in
+one cell), so it cannot be queried, summed or constrained.
 
 ### First normal form (1NF)
 
@@ -444,8 +441,8 @@ key.*
 Against the key `(order_id, product_name)`:
 
 - `customer_name`, `customer_email`, `order_date` depend on `order_id`
-  alone — a **partial dependency**.
-- `unit_price`, `vendor_name` depend on `product_name` alone — another
+  alone, a **partial dependency**.
+- `unit_price`, `vendor_name` depend on `product_name` alone, another
   **partial dependency**.
 
 So each is moved to a table keyed by what it actually depends on:
@@ -550,7 +547,7 @@ RETURNING product_id, product_name, price, quantity;
 
 ### SELECT with a search filter
 
-The customer's product search — case-insensitive, over orderable products
+The customer's product search, case-insensitive, over orderable products
 only:
 
 ```sql
@@ -560,7 +557,7 @@ SELECT product_id, product_name, price, available_quantity, supplier_name
  ORDER BY product_name;
 ```
 
-### JOIN — resolving the supplier
+### JOIN: resolving the supplier
 
 ```sql
 SELECT p.product_id, p.product_name, p.price,
@@ -572,7 +569,7 @@ SELECT p.product_id, p.product_name, p.price,
  ORDER BY v.company_name, p.product_name;
 ```
 
-### Multi-table JOIN — full order detail
+### Multi-table JOIN: full order detail
 
 ```sql
 SELECT o.order_id,
@@ -591,7 +588,7 @@ SELECT o.order_id,
  ORDER BY o.ordered_at DESC;
 ```
 
-### LEFT JOIN — keeping products that never sold
+### LEFT JOIN: keeping products that never sold
 
 An inner join would silently drop them and distort the chart:
 
@@ -604,7 +601,7 @@ SELECT p.product_name, COALESCE(sum(o.quantity), 0) AS units_sold
  ORDER BY units_sold DESC;
 ```
 
-### GROUP BY with aggregates — revenue per product
+### GROUP BY with aggregates: revenue per product
 
 ```sql
 SELECT p.product_name,
@@ -638,7 +635,7 @@ HAVING count(o.order_id) >= 2
 
 ### Subqueries
 
-Scalar subquery — products priced above the catalogue average:
+Scalar subquery, products priced above the catalogue average:
 
 ```sql
 SELECT product_name, price
@@ -647,7 +644,7 @@ SELECT product_name, price
    AND price > (SELECT avg(price) FROM products WHERE is_active);
 ```
 
-Correlated subquery — each vendor's most expensive product:
+Correlated subquery, each vendor's most expensive product:
 
 ```sql
 SELECT v.company_name, p.product_name, p.price
@@ -658,7 +655,7 @@ SELECT v.company_name, p.product_name, p.price
                    WHERE p2.vendor_id = v.vendor_id AND p2.is_active);
 ```
 
-`EXISTS` — which products are safe to hard-delete (the test
+`EXISTS`, which products are safe to hard-delete (the test
 `delete_product()` performs):
 
 ```sql
@@ -667,7 +664,7 @@ SELECT product_id, product_name
  WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.product_id = p.product_id);
 ```
 
-`IN` — customers who have ever had an order cancelled:
+`IN`, customers who have ever had an order cancelled:
 
 ```sql
 SELECT customer_id, full_name, email
@@ -675,7 +672,7 @@ SELECT customer_id, full_name, email
  WHERE customer_id IN (SELECT customer_id FROM orders WHERE status = 'CANCELLED');
 ```
 
-### UPDATE — with authorisation in the WHERE clause
+### UPDATE: with authorisation in the WHERE clause
 
 The `vendor_id` predicate *is* the permission check: with the wrong vendor
 the statement updates zero rows rather than someone else's product.
@@ -720,7 +717,7 @@ SELECT p.product_name,
 
 All state changes to orders and inventory go through PL/pgSQL functions in
 `database/functions.sql`. A function body runs in a single transaction, so
-each one either completes fully or changes nothing — the inventory can never
+each one either completes fully or changes nothing: the inventory can never
 be decremented without the order also moving to `ACCEPTED`. Each function
 also takes the acting vendor's id and checks ownership itself, so
 authorisation is enforced by the database rather than only by the API.
@@ -730,7 +727,7 @@ authorisation is enforced by the database rather than only by the API.
 | Function | What it does |
 |---|---|
 | `place_order(customer_id, product_id, quantity, shipping_address, contact_phone) → order_id` | Locks the product row, refuses an out-of-stock, archived or over-quantity request with the message `Only N units are currently available.`, snapshots the price, records shipping address and contact phone, inserts a `PENDING` order. **Does not touch stock.** |
-| `accept_order(order_id, vendor_id)` | Verifies ownership, verifies the order is still `PENDING`, re-checks stock, decrements `products.quantity`, sets `ACCEPTED` — atomically. |
+| `accept_order(order_id, vendor_id)` | Verifies ownership, verifies the order is still `PENDING`, re-checks stock, decrements `products.quantity`, sets `ACCEPTED`, atomically. |
 | `reject_order(order_id, vendor_id)` | Verifies ownership and pending status, sets `REJECTED`. Stock untouched. |
 | `cancel_order(order_id, vendor_id, reason)` | Requires a non-blank reason, allows `PENDING` or `ACCEPTED`, returns the units to stock if they had been deducted, stores the reason. |
 | `customer_cancel_order(order_id, customer_id)` | Allows a customer to cancel their own `PENDING` order, storing `'Cancelled by customer'`. Stock untouched because pending orders never consumed stock. |
@@ -758,7 +755,7 @@ against the same last units. Locks are always taken in the order
 | `trg_products_updated_at` | Sets `products.updated_at = now()` on every update, so the timestamp cannot be forgotten or faked by the application. |
 | `trg_vendors_email_unique` / `trg_customers_email_unique` | `UNIQUE` only applies within one table, so these stop the same email being registered as both a vendor and a customer. |
 
-No trigger silently changes business data — inventory movement is explicit
+No trigger silently changes business data: inventory movement is explicit
 in the functions, where it can be read and reasoned about.
 
 ---
@@ -817,11 +814,116 @@ stock, since acceptance had removed them.
 | Account enumeration | Login returns one identical message for an unknown email and a wrong password. |
 | CORS | Restricted to the dev frontend origin, configurable via `CORS_ORIGINS`. It was previously `["*"]`. |
 
+**On Row Level Security.** RLS is not used, and under this architecture it
+would add complexity without adding protection: the browser never connects
+to PostgreSQL, so there is no untrusted client holding database credentials
+for RLS to constrain. The equivalent guarantee is provided by the ownership
+checks inside the PL/pgSQL functions, which is where the security boundary
+actually sits. RLS would become necessary if the frontend were ever changed to
+query Supabase directly with an anon key. At that point every table would need
+policies keyed on `auth.uid()`.
+
 ---
 
-## 13. Team contributions
+## 13. Testing
 
-> Replace the names below with the actual team members.
+Three harnesses, 148 checks, all run against a live PostgreSQL. See
+`tests/README.md`.
+
+| Harness | Scope | Result |
+|---|---|---|
+| `tests/test_business_rules.sql` | 52 checks at the database level: constraints, the inventory rule, restocking, customer cancellation, vendor isolation, the delete strategy, catalogue visibility | **52 / 52 passed** |
+| `tests/test_api.py` | 82 end-to-end checks over HTTP, covering all 8 required scenarios plus restocking, shipping details and customer self-service cancellation | **82 / 82 passed** |
+| `tests/test_ui_contract.py` | 14 checks that every field the React pages read exists in the live API responses, in the shape the UI assumes | **14 / 14 passed** |
+
+Verified against PostgreSQL 16.15, and the frontend builds with
+`npm run build`. Each harness was run on a freshly rebuilt and re-seeded
+database. Scenario coverage:
+
+| Scenario | Expected | Verified |
+|---|---|---|
+| 1. Vendor registers, logs in, creates a product | Product tied to that vendor | ✅ |
+| 2. Customer registers, logs in, searches, views supplier | Supplier resolved by join | ✅ |
+| 3. Customer orders a valid quantity | Order `PENDING`, **stock unchanged** | ✅ 10 → 10 |
+| 4. Customer orders more than available | Refused before creation | ✅ `Only 10 units are currently available.` |
+| 5. Vendor accepts | `ACCEPTED`, stock decreases | ✅ 10 → 7 |
+| 6. Vendor rejects | `REJECTED`, stock unchanged | ✅ stays 7 |
+| 7. Vendor cancels with reason | `CANCELLED`, reason stored and shown to both | ✅ |
+| 8. Vendor modifies another vendor's product | Denied | ✅ `Product not found in your catalogue.` |
+
+Also verified: accepting twice does not double-decrement; a blank or missing
+cancellation reason is refused; a customer token cannot reach any vendor
+endpoint and vice versa; a forged or absent token is rejected; a new customer
+sees none of another customer's orders; deleting an ordered product archives
+it and the order history survives; and vendor B's sales figures are zero
+rather than vendor A's.
+
+The screenshots in the next section were taken from the running application.
+
+---
+
+## 14. Screenshots
+
+All screenshots come from the running application with the demo data from
+`database/seed.sql`.
+
+### 14.1 Authentication
+
+**Sign in.** One form for both roles: the Customer / Vendor toggle decides
+which account type the credentials are checked against.
+
+![Login page](docs/screenshots/login.png)
+
+**Create an account.** Registration for either role, with the same toggle.
+Required fields are validated in the browser before anything is sent.
+
+![Registration page](docs/screenshots/register.png)
+
+### 14.2 Vendor portal
+
+**My products.** The vendor's own catalogue with price, available quantity,
+created and updated dates, and the Restock, Edit price and Delete actions. The
+Wireless Mouse sits at quantity 0, which is why it does not appear in the
+customer catalogue. The "Add a product" form shows the browser's required-field
+check.
+
+![Vendor products page](docs/screenshots/vendor-products.png)
+
+**Incoming orders.** Orders placed against this vendor's products, with
+status filters and counts, a search box, the customer's shipping address and
+phone, and Accept, Reject and Cancel actions. Order 11 needs 8 units but only 0
+are in stock, so the page flags the shortfall and disables Accept for it.
+Cancelled orders show their stored reason.
+
+![Vendor incoming orders](docs/screenshots/vendor-orders.png)
+
+**Incoming orders, filtered to Cancelled.** The mandatory cancellation reason
+is stored on the order and displayed here.
+
+![Vendor cancelled orders with reason](docs/screenshots/vendor-orders-cancelled.png)
+
+**Sales.** Totals plus a revenue-by-product chart and an orders-over-time
+chart. Only accepted orders count as revenue, so the 2 pending orders are shown
+separately as "Awaiting decision".
+
+![Vendor sales analytics](docs/screenshots/vendor-sales.png)
+
+### 14.3 Customer portal
+
+**Browse products.** The combined catalogue of every orderable product, with
+the supplier shown on each row and a search box that filters by product name.
+
+![Customer product catalogue](docs/screenshots/customer-shop.png)
+
+**My orders.** The customer's own order history with supplier, quantity,
+price, date and time, status, delivery details, and a Cancel button on pending
+orders. A cancelled order shows its reason, the same text the vendor sees.
+
+![Customer order history](docs/screenshots/customer-orders.png)
+
+---
+
+## 15. Team contributions
 
 | Member | Area | Contribution |
 |---|---|---|
