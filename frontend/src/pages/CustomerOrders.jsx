@@ -53,7 +53,7 @@ export default function CustomerOrders() {
     setBusyId(order.order_id);
     try {
       await api.cancelMyOrder(order.order_id);
-      setNotice(`Order #${order.order_id} has been cancelled.`);
+      setNotice("ORDER CANCELLED");
       setCancellingOrder(null);
       load();
     } catch (err) {

@@ -83,10 +83,7 @@ export default function CustomerShop() {
         shippingAddress.trim(),
         contactPhone.trim(),
       );
-      setNotice(
-        `Order #${res.order_id} placed for ${wanted} × ${selected.product_name}. ` +
-          `It is pending until ${selected.supplier_name} accepts it.`,
-      );
+      setNotice("ORDER PLACED");
       setSelected(null);
       await load(search.trim());
     } catch (err) {

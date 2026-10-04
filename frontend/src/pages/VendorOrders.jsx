@@ -64,9 +64,7 @@ export default function VendorOrders() {
     setBusyId(order.order_id);
     try {
       await api.acceptOrder(order.order_id);
-      setNotice(
-        `Order #${order.order_id} accepted. ${order.quantity} × ${order.product_name} removed from stock.`
-      );
+      setNotice("ORDER RECEIVED");
       await load();
     } catch (err) {
       setError(err.message);
@@ -81,7 +79,7 @@ export default function VendorOrders() {
     setBusyId(order.order_id);
     try {
       await api.rejectOrder(order.order_id);
-      setNotice(`Order #${order.order_id} rejected. Stock unchanged.`);
+      setNotice("ORDER REJECTED");
       setRejectingOrder(null);
       await load();
     } catch (err) {
@@ -99,7 +97,7 @@ export default function VendorOrders() {
     setBusyId(cancelling.order_id);
     try {
       await api.cancelOrder(cancelling.order_id, reason.trim());
-      setNotice(`Order #${cancelling.order_id} cancelled. The reason is visible to the customer.`);
+      setNotice("ORDER CANCELLED");
       setCancelling(null);
       setReason("");
       await load();
