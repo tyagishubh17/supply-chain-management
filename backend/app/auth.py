@@ -29,6 +29,8 @@ if not JWT_SECRET:
     )
 
 JWT_ALGORITHM = "HS256"
+
+# Keep access tokens short-lived; override the default through the environment.
 TOKEN_TTL_HOURS = int(os.getenv("TOKEN_TTL_HOURS", "12"))
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -42,10 +44,12 @@ ROLE_TABLES = {
 
 
 def hash_password(password: str) -> str:
+    """Hash a plaintext password with bcrypt before storing it."""
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
+    """Check a plaintext password against a stored bcrypt hash."""
     try:
         return bcrypt.checkpw(plain.encode(), hashed.encode())
     except ValueError:
@@ -53,13 +57,24 @@ def verify_password(plain: str, hashed: str) -> bool:
         return False
 
 
+
+
+
 def create_access_token(user_id: int, role: str) -> str:
+    # Store both identity and role in the signed token so authorization
+    # checks do not depend on user-supplied identity fields.
     payload = {
         "sub": str(user_id),
         "role": role,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=TOKEN_TTL_HOURS),
+        "exp": datetime.now(timezone.utc)
+        + timedelta(hours=TOKEN_TTL_HOURS),
     }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+    return jwt.encode(
+        payload,
+        JWT_SECRET,
+        algorithm=JWT_ALGORITHM,
+    )
 
 
 def get_current_user(
@@ -80,16 +95,28 @@ def get_current_user(
         raise invalid
 
     try:
-        payload = jwt.decode(creds.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(
+            creds.credentials,
+            JWT_SECRET,
+            algorithms=[JWT_ALGORITHM],
+        )
         user_id = int(payload["sub"])
         role = payload["role"]
     except (jwt.PyJWTError, KeyError, TypeError, ValueError):
         raise invalid from None
 
+
+    # Reject unknown roles before constructing the database query.
+
     if role not in ROLE_TABLES:
         raise invalid
 
     table, pk, name_col = ROLE_TABLES[role]
+
+
+    # Resolve the token identity against the database so deleted or
+    # nonexistent accounts cannot authenticate successfully.
+
     row = fetch_one(
         f"SELECT {pk} AS id, {name_col} AS name, email FROM {table} WHERE {pk} = %s",
         (user_id,),
@@ -97,7 +124,13 @@ def get_current_user(
     if row is None:
         raise invalid
 
-    return {"id": row["id"], "name": row["name"], "email": row["email"], "role": role}
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "email": row["email"],
+        "role": role,
+    }
+
 
 
 def require_role(role: str):
