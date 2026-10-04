@@ -817,79 +817,9 @@ stock, since acceptance had removed them.
 | Account enumeration | Login returns one identical message for an unknown email and a wrong password. |
 | CORS | Restricted to the dev frontend origin, configurable via `CORS_ORIGINS`. It was previously `["*"]`. |
 
-**On Row Level Security.** RLS is not used, and under this architecture it
-would add complexity without adding protection: the browser never connects
-to PostgreSQL, so there is no untrusted client holding database credentials
-for RLS to constrain. The equivalent guarantee is provided by the
-ownership checks inside the PL/pgSQL functions, which is where the security
-boundary actually sits. RLS would become necessary if the frontend were ever
-changed to query Supabase directly with an anon key — at that point every
-table would need policies keyed on `auth.uid()`.
-
 ---
 
-## 13. Testing
-
-Three harnesses, 125 checks, all run against a live PostgreSQL. See
-`tests/README.md`.
-
-| Harness | Scope | Result |
-|---|---|---|
-| `tests/test_business_rules.sql` | 44 checks at the database level: constraints, the inventory rule, vendor isolation, the delete strategy, catalogue visibility | **44 / 44 passed** |
-| `tests/test_api.py` | 67 end-to-end checks over HTTP, covering all 8 required scenarios | **67 / 67 passed** |
-| `tests/test_ui_contract.py` | 14 checks that every field the React pages read exists in the live API responses, in the shape the UI assumes | **14 / 14 passed** |
-
-Verified against PostgreSQL 16.15; the frontend builds clean with
-`npm run build`. Scenario coverage:
-
-| Scenario | Expected | Verified |
-|---|---|---|
-| 1. Vendor registers, logs in, creates a product | Product tied to that vendor | ✅ |
-| 2. Customer registers, logs in, searches, views supplier | Supplier resolved by join | ✅ |
-| 3. Customer orders a valid quantity | Order `PENDING`, **stock unchanged** | ✅ 10 → 10 |
-| 4. Customer orders more than available | Refused before creation | ✅ `Only 10 units are currently available.` |
-| 5. Vendor accepts | `ACCEPTED`, stock decreases | ✅ 10 → 7 |
-| 6. Vendor rejects | `REJECTED`, stock unchanged | ✅ stays 7 |
-| 7. Vendor cancels with reason | `CANCELLED`, reason stored and shown to both | ✅ |
-| 8. Vendor modifies another vendor's product | Denied | ✅ `Product not found in your catalogue.` |
-
-Also verified: accepting twice does not double-decrement; a blank or missing
-cancellation reason is refused; a customer token cannot reach any vendor
-endpoint and vice versa; a forged or absent token is rejected; a new
-customer sees none of another customer's orders; deleting an ordered product
-archives it and the order history survives; and vendor B's sales figures are
-zero rather than vendor A's.
-
-**Not yet covered:** the pages have not been walked through in a real
-browser, so the data contract and the production build are verified but the
-rendered layout is not. Run `npm run dev` and click through both portals
-before the demo, and capture the screenshots listed below while doing so.
-
----
-
-## 14. Screenshots
-
-> Add the following screenshots to a `docs/screenshots/` folder and they
-> will render here.
-
-| Screen | Image |
-|---|---|
-| Login | `![Login](docs/screenshots/login.png)` |
-| Registration | `![Register](docs/screenshots/register.png)` |
-| Vendor — add product | `![Add product](docs/screenshots/vendor-add-product.png)` |
-| Vendor — product management | `![Products](docs/screenshots/vendor-products.png)` |
-| Vendor — incoming orders | `![Vendor orders](docs/screenshots/vendor-orders.png)` |
-| Vendor — cancellation dialog | `![Cancel](docs/screenshots/vendor-cancel.png)` |
-| Vendor — sales charts | `![Sales](docs/screenshots/vendor-sales.png)` |
-| Customer — product listing | `![Catalogue](docs/screenshots/customer-shop.png)` |
-| Customer — search | `![Search](docs/screenshots/customer-search.png)` |
-| Customer — product details | `![Product detail](docs/screenshots/customer-product-detail.png)` |
-| Customer — order history | `![My orders](docs/screenshots/customer-orders.png)` |
-| Cancellation reason shown to customer | `![Reason](docs/screenshots/cancellation-reason.png)` |
-
----
-
-## 15. Team contributions
+## 13. Team contributions
 
 > Replace the names below with the actual team members.
 
