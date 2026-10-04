@@ -154,11 +154,11 @@ SELECT t_expect_fail(
 
 SELECT t_expect_fail(
   $q$SELECT restock_product(1, 1, 0)$q$,
-  'zero added quantity is rejected', 'Added quantity must be greater than zero.');
+  'zero added quantity is rejected', 'Restock quantity must be at least 1.');
 
 SELECT t_expect_fail(
   $q$SELECT restock_product(1, 1, -5)$q$,
-  'negative added quantity is rejected', 'Added quantity must be greater than zero.');
+  'negative added quantity is rejected', 'Restock quantity must be at least 1.');
 
 SELECT restock_product(1, 1, 5);
 SELECT t_assert(quantity = 20, 'restocking 5 units increased stock 15 -> 20', 'stock=' || quantity) FROM products WHERE product_id = 1;
