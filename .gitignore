@@ -9,6 +9,7 @@
 
 # --- python ------------------------------------------------
 backend/venv/
+backend/.venv/
 venv/
 __pycache__/
 *.py[cod]
