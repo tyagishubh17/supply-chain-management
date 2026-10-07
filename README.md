@@ -408,7 +408,7 @@ SELECT v.company_name
 
 ## 8. Normalisation (UNF → 3NF)
 
-Worked through with this project's actual data. Suppose we had started with
+Suppose we had started with
 one flat table recording everything about an order:
 
 ### Unnormalised form (UNF)
